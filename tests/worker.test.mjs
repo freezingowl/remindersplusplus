@@ -1,0 +1,239 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import test from "node:test";
+import { createWorker } from "../worker/worker.mjs";
+
+const TOKEN = "test-access-token-with-32-characters";
+const START = Date.parse("2026-10-11T00:00:10Z");
+const DUE = "2026-10-12T20:00:00+05:30";
+const completion = (value = { title: "Call Mum", note: "", dueAt: DUE }) => ({
+  status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }],
+});
+
+// Execute the actual production SQL against SQLite, through D1's API shape.
+function database() {
+  const sqlite = new DatabaseSync(":memory:");
+  sqlite.exec(readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8"));
+  return {
+    prepare(sql) {
+      const statement = sqlite.prepare(sql);
+      let parameters = [];
+      return {
+        bind(...values) { parameters = values; return this; },
+        async run() {
+          const result = statement.run(Object.fromEntries(parameters.map((value, index) => [`?${index + 1}`, value])));
+          return { success: true, meta: { changes: Number(result.changes) } };
+        },
+        async first() { return statement.get(Object.fromEntries(parameters.map((value, index) => [`?${index + 1}`, value]))) ?? null; },
+      };
+    },
+    close() { sqlite.close(); },
+    row(route = "parse") { return sqlite.prepare("SELECT * FROM cue_quotas WHERE route = ?").get(route); },
+  };
+}
+
+function fixture(t, { upstream, timeoutMs } = {}) {
+  const db = database();
+  t.after(() => db.close());
+  let time = START;
+  const calls = [];
+  const fetchImpl = async (url, options) => {
+    calls.push({ url, options });
+    return upstream ? upstream(url, options) : Response.json(completion());
+  };
+  const dependencies = { now: () => time, fetchImpl, timeoutMs };
+  const env = { CUE_DB: db, OPENAI_API_KEY: "fake-upstream-key", CUE_CLIENT_TOKEN: TOKEN };
+  return { db, env, calls, dependencies, worker: createWorker(dependencies), setTime(value) { time = value; } };
+}
+
+function request(body = { text: "Call Mum tomorrow at 8 PM", timeZone: "Asia/Kolkata" }, headers = {}) {
+  return new Request("https://cue.example/v1/reminders/parse", {
+    method: "POST", headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+}
+
+async function code(response) { return (await response.json()).error?.code; }
+
+test("extracts with Luna, no reasoning, strict output and server time; keeps key on upstream only", async (t) => {
+  const f = fixture(t);
+  const result = await f.worker.fetch(request(), f.env);
+  assert.equal(result.status, 200);
+  assert.deepEqual((await result.json()).reminder, { title: "Call Mum", note: "", dueAt: DUE });
+  assert.equal(result.headers.get("Cache-Control"), "no-store");
+  assert.equal(f.calls.length, 1);
+  const { url, options } = f.calls[0];
+  assert.equal(url, "https://api.openai.com/v1/responses");
+  assert.equal(options.headers.Authorization, "Bearer fake-upstream-key");
+  const body = JSON.parse(options.body);
+  assert.equal(body.model, "gpt-6-luna");
+  assert.equal(body.reasoning.effort, "none");
+  assert.equal(body.store, false);
+  assert.equal(body.text.format.strict, true);
+  assert.equal(body.max_output_tokens, 512);
+  assert.match(body.input[0].content, /2026-10-11T00:00:10.000Z/);
+  assert.match(body.input[0].content, /Asia\/Kolkata/);
+  assert.equal(f.db.row().minute_count, 1);
+});
+
+test("rejects unauthorized requests, browser origins, malformed input and missing configuration before paid calls", async (t) => {
+  const f = fixture(t);
+  assert.equal((await f.worker.fetch(request({}, { Authorization: "Bearer wrong" }), f.env)).status, 401);
+  assert.equal((await f.worker.fetch(request({}, { Origin: "https://untrusted.example" }), f.env)).status, 403);
+  for (const body of [null, {}, { text: " ", timeZone: "UTC" }, { text: "x".repeat(2001), timeZone: "UTC" }, { text: "Task", timeZone: "invalid/zone" }]) {
+    assert.equal((await f.worker.fetch(request(body), f.env)).status, 400);
+  }
+  assert.equal((await f.worker.fetch(request(), { ...f.env, OPENAI_API_KEY: "" })).status, 503);
+  assert.equal((await f.worker.fetch(request(), { ...f.env, CUE_CLIENT_TOKEN: "short" })).status, 503);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.db.row(), undefined);
+});
+
+test("enforces actual streamed bytes without trusting Content-Length", async (t) => {
+  const f = fixture(t);
+  const body = new ReadableStream({ start(controller) {
+    controller.enqueue(new Uint8Array(10_000));
+    controller.enqueue(new Uint8Array(10_000));
+    controller.close();
+  } });
+  const streamed = new Request("https://cue.example/v1/reminders/parse", {
+    method: "POST", headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" }, body, duplex: "half",
+  });
+  assert.equal((await f.worker.fetch(streamed, f.env)).status, 413);
+  const malformed = request();
+  const invalid = new Request(malformed.url, { method: "POST", headers: malformed.headers, body: "{invalid" });
+  assert.equal(await code(await f.worker.fetch(invalid, f.env)), "invalid_json");
+  assert.equal(f.calls.length, 0);
+});
+
+test("atomic quota admits only ten concurrent requests across fresh Worker instances", async (t) => {
+  const f = fixture(t);
+  const responses = await Promise.all(Array.from({ length: 30 }, () => createWorker(f.dependencies).fetch(request(), f.env)));
+  assert.equal(responses.filter((item) => item.status === 200).length, 10);
+  assert.equal(responses.filter((item) => item.status === 429).length, 20);
+  assert.equal(f.calls.length, 10);
+  assert.equal(f.db.row().minute_count, 10);
+  assert.equal(f.db.row().day_count, 10); // Rejected requests do not consume daily capacity.
+  assert.equal(responses.find((item) => item.status === 429).headers.get("Retry-After"), "50");
+  f.setTime(START + 60_000);
+  assert.equal((await f.worker.fetch(request(), f.env)).status, 200);
+  assert.equal(f.db.row().minute_count, 1);
+  assert.equal(f.db.row().day_count, 11);
+  // A request started before the boundary but arriving late cannot roll counters back.
+  f.setTime(START);
+  assert.equal((await f.worker.fetch(request(), f.env)).status, 429);
+  assert.equal(f.db.row().minute_count, 1);
+  assert.equal(f.db.row().day_count, 11);
+});
+
+test("daily cap survives minute changes; only the UTC day reset admits another call", async (t) => {
+  const f = fixture(t);
+  for (let i = 0; i < 500; i++) {
+    f.setTime(START + i * 60_000);
+    assert.equal((await f.worker.fetch(request(), f.env)).status, 200);
+  }
+  f.setTime(START + 500 * 60_000);
+  const blocked = await createWorker(f.dependencies).fetch(request(), f.env);
+  assert.equal(blocked.status, 429);
+  assert.equal(await code(blocked), "daily_limit");
+  assert.equal(Number(blocked.headers.get("Retry-After")), 56_390);
+  assert.equal(f.calls.length, 500);
+  assert.equal(f.db.row().day_count, 500);
+  f.setTime(START + 86_400_000);
+  assert.equal((await f.worker.fetch(request(), f.env)).status, 200);
+  assert.equal(f.db.row().day_count, 1);
+});
+
+test("quota failures fail closed, including unexpected D1 metadata", async (t) => {
+  const f = fixture(t);
+  for (const db of [
+    { prepare() { throw new Error("private database details"); } },
+    { prepare() { return { bind() { return this; }, async run() { return { success: true }; } }; } },
+  ]) {
+    const response = await f.worker.fetch(request(), { ...f.env, CUE_DB: db });
+    assert.equal(response.status, 503);
+    assert.equal(await code(response), "quota_unavailable");
+  }
+  assert.equal(f.calls.length, 0);
+});
+
+test("rejects refused, incomplete, malformed, impossible and past model outputs", async (t) => {
+  const cases = [
+    [{ status: "incomplete", output: [] }, 502],
+    [{ status: "completed", output: [{ type: "message", content: [{ type: "refusal", refusal: "No" }] }] }, 422],
+    [completion({ title: "", note: "", dueAt: "" }), 502],
+    [completion({ title: "Task", note: "", dueAt: "2026-10-12T20:00:00" }), 502],
+    [completion({ title: "Task", note: "", dueAt: "2027-02-30T20:00:00Z" }), 502],
+    [completion({ title: "Task", note: "", dueAt: "2026-10-10T20:00:00Z" }), 422],
+  ];
+  for (const [output, status] of cases) {
+    const f = fixture(t, { upstream: async () => Response.json(output) });
+    assert.equal((await f.worker.fetch(request(), f.env)).status, status);
+    assert.equal(f.calls.length, 1); // No automatic paid retries.
+  }
+  const f = fixture(t, { upstream: async () => Response.json(completion({ title: "Task", note: "", dueAt: "" })) });
+  assert.equal((await f.worker.fetch(request(), f.env)).status, 200); // Ambiguous time stays unset.
+});
+
+test("sanitizes upstream errors and timeout; never returns provider credentials or diagnostics", async (t) => {
+  for (const [upstreamStatus, expected] of [[401, 503], [403, 503], [404, 503], [429, 503], [500, 502]]) {
+    const f = fixture(t, { upstream: async () => Response.json({ error: { message: "fake-upstream-key private diagnostics" } }, { status: upstreamStatus }) });
+    const response = await f.worker.fetch(request(), f.env);
+    assert.equal(response.status, expected);
+    assert.doesNotMatch(await response.text(), /fake-upstream-key|diagnostics/);
+    assert.equal(f.db.row().day_count, 1); // Failed upstream attempts still count.
+  }
+  const f = fixture(t, { timeoutMs: 5, upstream: async (_, options) => new Promise((_, reject) => {
+    options.signal.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+  }) });
+  assert.equal((await f.worker.fetch(request(), f.env)).status, 504);
+});
+
+function audioRequest(extraModel) {
+  const form = new FormData();
+  form.append("file", new File(["test audio fixture"], "capture.m4a", { type: "audio/m4a" }));
+  if (extraModel) form.append("model", extraModel);
+  return new Request("https://cue.example/v1/audio/transcribe", {
+    method: "POST", headers: { Authorization: `Bearer ${TOKEN}` }, body: form,
+  });
+}
+
+test("voice uses its own bounded quota and server-selected transcription model", async (t) => {
+  const f = fixture(t, { upstream: async () => Response.json({ text: "Call Mum tomorrow at 8 PM" }) });
+  for (let i = 0; i < 2; i++) {
+    const response = await f.worker.fetch(audioRequest("expensive-client-model"), f.env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).text, "Call Mum tomorrow at 8 PM");
+  }
+  assert.equal((await f.worker.fetch(audioRequest(), f.env)).status, 429);
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[0].url, "https://api.openai.com/v1/audio/transcriptions");
+  assert.equal(f.calls[0].options.body.get("model"), "gpt-4o-mini-transcribe");
+  assert.equal(f.calls[0].options.body.get("response_format"), "json");
+  assert.equal(f.db.row("transcribe").day_count, 2);
+  assert.equal(f.db.row(), undefined);
+  const form = new FormData();
+  form.append("file", new File([new Uint8Array(2 * 1024 * 1024 + 1)], "capture.m4a", { type: "audio/m4a" }));
+  const invalid = new Request("https://cue.example/v1/audio/transcribe", {
+    method: "POST", headers: { Authorization: `Bearer ${TOKEN}` }, body: form,
+  });
+  assert.equal((await f.worker.fetch(invalid, f.env)).status, 400);
+  assert.equal(f.calls.length, 2);
+});
+
+test("health makes no AI call; CORS permits only the configured origin; routes/methods are restricted", async (t) => {
+  const f = fixture(t);
+  const response = await f.worker.fetch(new Request("https://cue.example/health"), f.env);
+  assert.deepEqual(await response.json(), { ok: true });
+  assert.equal(f.calls.length, 0);
+  const browserEnv = { ...f.env, ALLOWED_ORIGIN: "https://cue-web.example" };
+  const preflight = new Request("https://cue.example/v1/reminders/parse", { method: "OPTIONS", headers: { Origin: browserEnv.ALLOWED_ORIGIN } });
+  assert.equal((await f.worker.fetch(preflight, browserEnv)).status, 204);
+  const allowed = await f.worker.fetch(request(undefined, { Origin: browserEnv.ALLOWED_ORIGIN }), browserEnv);
+  assert.equal(allowed.headers.get("Access-Control-Allow-Origin"), browserEnv.ALLOWED_ORIGIN);
+  assert.equal((await f.worker.fetch(new Request("https://cue.example/unknown"), f.env)).status, 404);
+  const get = await f.worker.fetch(new Request("https://cue.example/v1/reminders/parse"), f.env);
+  assert.equal(get.status, 405);
+  assert.equal(get.headers.get("Allow"), "POST");
+});

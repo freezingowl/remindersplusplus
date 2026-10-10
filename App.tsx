@@ -29,7 +29,7 @@ import { SettingsSheet } from "./src/components/SettingsSheet";
 import {
   captureWithCompanion,
   companionStatus,
-  configureCompanionAI,
+  configureCompanionCloud,
   hasCompanion,
   observeCompanion,
   refreshCompanion,
@@ -42,19 +42,16 @@ import {
   scheduleReminderNotification,
 } from "./src/lib/notifications";
 import {
-  fallbackReminder,
-  parseReminderWithOpenAi,
+  parseReminderWithCloud,
   transcribeReminderAudio,
 } from "./src/lib/reminderParser";
 import {
-  loadApiKey,
+  clearLegacyAIKey,
   loadReminders,
-  saveApiKey,
   saveReminders,
 } from "./src/lib/storage";
-import type { ParsedReminder, Reminder, ReminderSource } from "./src/types";
-
-const developmentApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim() ?? "";
+import { cloudConfig, cloudConfigured, cloudConfigurationError } from "./src/lib/cloud";
+import type { Reminder, ReminderSource } from "./src/types";
 
 function createId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
@@ -73,8 +70,6 @@ function reminderSort(a: Reminder, b: Reminder): number {
 export default function App() {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [input, setInput] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [apiKeyDraft, setApiKeyDraft] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -83,6 +78,7 @@ export default function App() {
   const [isCompanionBusy, setIsCompanionBusy] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
+  const voiceFinishing = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -106,12 +102,10 @@ export default function App() {
   useEffect(() => {
     async function hydrate(): Promise<void> {
       try {
-        const [storedReminders, savedKey] = await Promise.all([loadReminders(), loadApiKey()]);
-        const key = savedKey || developmentApiKey;
-        await configureCompanionAI(key);
+        const [storedReminders] = await Promise.all([loadReminders(), clearLegacyAIKey()]);
+        await configureCompanionCloud(cloudConfigured ? cloudConfig.url : "", cloudConfigured ? cloudConfig.token : "");
         await refreshCompanion();
         setReminders(storedReminders);
-        setApiKey(key);
         if (hasCompanion) setIsCompanionActive((await companionStatus()).active);
         setIsReady(true);
       } catch (error) {
@@ -152,7 +146,6 @@ export default function App() {
   }, [isReady, reminders]);
 
   function openSettings(): void {
-    setApiKeyDraft(apiKey);
     setIsSettingsOpen(true);
     if (hasCompanion) void companionStatus().then((status) => setIsCompanionActive(status.active)).catch(() => {});
   }
@@ -166,18 +159,6 @@ export default function App() {
       Alert.alert("Couldn’t change the companion", error instanceof Error ? error.message : "Open iPhone Settings and allow Live Activities for Cue.");
     } finally {
       setIsCompanionBusy(false);
-    }
-  }
-
-  async function saveSettings(): Promise<void> {
-    const nextKey = apiKeyDraft.trim();
-    try {
-      await saveApiKey(nextKey);
-      setApiKey(nextKey);
-      setIsSettingsOpen(false);
-      showToast(nextKey ? "AI is ready for natural language and voice." : "AI key removed.");
-    } catch {
-      Alert.alert("Couldn’t save your key", "Try again or use the development environment variable.");
     }
   }
 
@@ -195,7 +176,7 @@ export default function App() {
         setInput("");
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const added = saved[0];
-        showToast(added?.notificationId ? "Reminder saved and scheduled." : added?.dueAt ? "Reminder saved. Enable notifications for an alert." : apiKey ? "Reminder saved. No time set." : "Saved your words. Add an AI key to understand times.");
+        showToast(added?.notificationId ? "Reminder saved and scheduled." : added?.dueAt ? "Reminder saved. Enable notifications for an alert." : "Reminder saved. No time set.");
       } catch (error) {
         Alert.alert("Couldn’t add reminder", error instanceof Error ? error.message : "Please try again.");
       } finally {
@@ -203,52 +184,27 @@ export default function App() {
       }
       return;
     }
-    let parsed: ParsedReminder;
-    let usedFallback = false;
-
     try {
-      parsed = apiKey
-        ? await parseReminderWithOpenAi(text, apiKey)
-        : fallbackReminder(text);
-    } catch {
-      parsed = fallbackReminder(text);
-      usedFallback = true;
-    }
-
-    const reminder: Reminder = {
-      id: createId(),
-      title: parsed.title,
-      note: parsed.note,
-      dueAt: parsed.dueAt,
-      completed: false,
-      createdAt: new Date().toISOString(),
-      source,
-    };
-
-    try {
-      reminder.notificationId = await scheduleReminderNotification(reminder);
-    } catch {
-      // Adding the reminder must not fail if OS notifications are unavailable.
-    }
-
-    setReminders((current) => [reminder, ...current]);
-    setInput("");
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    showToast(
-      usedFallback
-        ? "Saved your words. AI parsing wasn’t available."
-        : reminder.notificationId
-          ? "Reminder saved and scheduled."
-          : reminder.dueAt ? "Reminder saved. Enable notifications for an alert."
-          : "Reminder saved.",
-    );
-    setIsCreating(false);
+      const parsed = await parseReminderWithCloud(text);
+      const reminder: Reminder = {
+        id: createId(), title: parsed.title, note: parsed.note, dueAt: parsed.dueAt,
+        completed: false, createdAt: new Date().toISOString(), source,
+      };
+      try { reminder.notificationId = await scheduleReminderNotification(reminder); }
+      catch { /* Saving still works when the OS declines notifications. */ }
+      setReminders((current) => [reminder, ...current]);
+      setInput("");
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      showToast(reminder.notificationId ? "Reminder saved and scheduled."
+        : reminder.dueAt ? "Reminder saved. Enable notifications for an alert." : "Reminder saved. No time set.");
+    } catch (error) {
+      Alert.alert("Couldn’t add reminder", error instanceof Error ? error.message : "Please try again.");
+    } finally { setIsCreating(false); }
   }
 
   async function startVoiceCapture(): Promise<void> {
-    if (!apiKey) {
-      showToast("Add an OpenAI key in settings to turn speech into reminders.");
-      openSettings();
+    if (!cloudConfigured) {
+      Alert.alert("Cloud AI unavailable", cloudConfigurationError());
       return;
     }
 
@@ -276,6 +232,9 @@ export default function App() {
   }
 
   async function finishVoiceCapture(): Promise<void> {
+    if (voiceFinishing.current) return;
+    voiceFinishing.current = true;
+    setIsTranscribing(true);
     try {
       await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false });
@@ -284,17 +243,26 @@ export default function App() {
         throw new Error("No audio was captured.");
       }
 
-      setIsTranscribing(true);
       showToast("Turning your voice into a reminder…");
-      const transcript = await transcribeReminderAudio(uri, apiKey);
+      const transcript = await transcribeReminderAudio(uri);
       await createReminder(transcript, "voice");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Please try again.";
       Alert.alert("Couldn’t understand that", message);
     } finally {
+      voiceFinishing.current = false;
       setIsTranscribing(false);
     }
   }
+
+  useEffect(() => {
+    if (recorderState.isRecording && recorderState.durationMillis >= 60_000) {
+      const timer = setTimeout(() => void finishVoiceCapture(), 0);
+      return () => clearTimeout(timer);
+    }
+    // Only recording progress triggers the cap, not changes to UI callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorderState.isRecording, recorderState.durationMillis]);
 
   async function handleVoicePress(): Promise<void> {
     if (isProcessing) {
@@ -378,14 +346,14 @@ export default function App() {
             </Text>
           </View>
           <Pressable
-            accessibilityLabel="Open AI settings"
+            accessibilityLabel="Open settings"
             accessibilityRole="button"
             hitSlop={10}
             onPress={openSettings}
             style={({ pressed }) => [styles.settingsButton, pressed && styles.settingsPressed]}
           >
             <Ionicons color="#202026" name="settings-outline" size={25} />
-            <View style={[styles.aiIndicator, apiKey ? styles.aiReady : styles.aiOff]} />
+            <View style={[styles.aiIndicator, cloudConfigured ? styles.aiReady : styles.aiOff]} />
           </Pressable>
         </View>
 
@@ -442,10 +410,8 @@ export default function App() {
       </KeyboardAvoidingView>
 
       <SettingsSheet
-        apiKey={apiKeyDraft}
-        onChangeApiKey={setApiKeyDraft}
+        cloudConfigured={cloudConfigured}
         onClose={() => setIsSettingsOpen(false)}
-        onSave={() => void saveSettings()}
         companionAvailable={hasCompanion}
         companionActive={isCompanionActive}
         companionBusy={isCompanionBusy}

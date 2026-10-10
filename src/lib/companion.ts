@@ -7,7 +7,7 @@ export type CompanionStatus = { enabled: boolean; allowed: boolean; active: bool
 type CompanionModule = {
   getReminders(): Promise<string | null>;
   seedReminders(json: string): Promise<string>;
-  configureAI(key: string): Promise<void>;
+  configureCloud(url: string, token: string): Promise<void>;
   getStatus(): Promise<CompanionStatus>;
   setEnabled(enabled: boolean): Promise<CompanionStatus>;
   capture(text: string, source: ReminderSource): Promise<string>;
@@ -41,8 +41,8 @@ export async function seedNativeReminders(reminders: Reminder[]): Promise<Remind
   return remindersFromJSON(await module().seedReminders(JSON.stringify(reminders)));
 }
 
-export async function configureCompanionAI(key: string): Promise<void> {
-  if (native) await native.configureAI(key);
+export async function configureCompanionCloud(url: string, token: string): Promise<void> {
+  if (native) await native.configureCloud(url, token);
 }
 
 export async function companionStatus(): Promise<CompanionStatus> {

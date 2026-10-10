@@ -23,3 +23,8 @@ Thumbs.db
 *.log
 
 # Add entries appropriate to your chosen language or framework.
+
+# Cloudflare local secrets and local D1 state.
+.dev.vars
+.dev.vars.*
+.wrangler/

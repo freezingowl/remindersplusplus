@@ -1,8 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 
 import type { Reminder } from "../types";
-import { configureCompanionAI, hasCompanion, nativeReminders, seedNativeReminders } from "./companion";
+import { hasCompanion, nativeReminders, seedNativeReminders } from "./companion";
 
 const REMINDERS_KEY = "@cue/reminders";
 const API_KEY_STORAGE_KEY = "@cue/openai-api-key";
@@ -50,23 +51,9 @@ export async function saveReminders(reminders: Reminder[]): Promise<void> {
   await AsyncStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
 }
 
-export async function loadApiKey(): Promise<string> {
-  try {
-    return (await SecureStore.getItemAsync(API_KEY_STORAGE_KEY)) ?? "";
-  } catch (error) {
-    if (hasCompanion) throw error;
-    return "";
-  }
-}
-
-export async function saveApiKey(apiKey: string): Promise<void> {
-  const oldKey = await loadApiKey();
-  await configureCompanionAI(apiKey);
-  try {
-    if (apiKey) await SecureStore.setItemAsync(API_KEY_STORAGE_KEY, apiKey);
-    else await SecureStore.deleteItemAsync(API_KEY_STORAGE_KEY);
-  } catch (error) {
-    await configureCompanionAI(oldKey);
-    throw error;
+// Delete personal OpenAI keys saved by earlier builds; cloud requests never read them.
+export async function clearLegacyAIKey(): Promise<void> {
+  if (Platform.OS !== "web" && await SecureStore.isAvailableAsync()) {
+    await SecureStore.deleteItemAsync(API_KEY_STORAGE_KEY);
   }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "cue-ai",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-10-11",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "CUE_DB",
+      "database_name": "cue-ai-limits",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
+  "observability": { "enabled": false }
+}

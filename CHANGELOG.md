@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T02:03:14+05:30 — Move all AI capture behind a rate-limited Cloudflare Worker
+
+- Changed: Added pasteable `worker/worker.mjs`, D1 schema, optional Wrangler configuration and deployment/Back Tap guide. Replaced app/native direct OpenAI requests with authenticated Worker calls, removed the API-key entry UI and unparsed fallback, and delete old stored OpenAI keys during setup. Added separate Worker URL/Cue token environment configuration persisted for native Shortcuts, bounded request timeouts, voice capture/upload limits and ten offline backend tests. Updated README, submission setup, environment example, ignores and scripts.
+- Why: Keep the OpenAI secret exclusively in Cloudflare, use the documented low-cost `gpt-6-luna` Responses API with reasoning disabled, and enforce global minute/daily request caps atomically even across Worker instances. Quota failures block paid calls; all app and Back Tap capture paths use the same backend.
+- Validation: Ten Worker scenarios passed with actual SQLite quota SQL and mocked OpenAI responses, including concurrent admission, minute/day resets, no counter rollback from late requests, storage failure, auth/input/audio validation, strict outputs, refusal/past-time handling, sanitized errors and timeout. Typecheck/lint, both companion checks (seven Swift selection scenarios) and four iOS path checks passed. Synced native sources and compiled the complete unsigned Debug iPhone app/widget successfully; existing signing configuration preserved. Worker/test syntax and diff whitespace checks passed.
+- Limitations: Worker not deployed and real OpenAI latency/results not measured. Physical Back Tap, signed install, rendered glass, background Shortcut execution and device notifications remain unverified. Global limits apply to all clients together; the demo access token ships in the app and does not replace real user authentication for public distribution. Voice size/request caps are not a dollar spending cap. This backend does not add APNs scheduling, reminder sync or 24/7 Live Activity renewal.
+
 ## 2026-10-11T01:31:48+05:30 — Add the minimal native Lock Screen companion
 
 - Changed: Added tracked Swift ActivityKit/WidgetKit/App Intents sources, a React Native bridge, a shared native reminder store, Keychain access for Shortcuts, and an idempotent Expo extension plugin. Added a settings session switch and Back Tap instructions, migrated existing reminders once, and connected in-app/Shortcut completion and deletion to the same store. Added native-project synchronization and selection/prebuild tests.

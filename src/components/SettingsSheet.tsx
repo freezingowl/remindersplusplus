@@ -10,16 +10,13 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
 type SettingsSheetProps = {
   visible: boolean;
-  apiKey: string;
-  onChangeApiKey: (value: string) => void;
+  cloudConfigured: boolean;
   onClose: () => void;
-  onSave: () => void;
   companionAvailable: boolean;
   companionActive: boolean;
   companionBusy: boolean;
@@ -28,10 +25,8 @@ type SettingsSheetProps = {
 
 export function SettingsSheet({
   visible,
-  apiKey,
-  onChangeApiKey,
+  cloudConfigured,
   onClose,
-  onSave,
   companionAvailable,
   companionActive,
   companionBusy,
@@ -48,8 +43,8 @@ export function SettingsSheet({
           <View style={styles.handle} />
           <View style={styles.header}>
             <View>
-              <Text style={styles.eyebrow}>PRIVATE ON THIS DEVICE</Text>
-              <Text style={styles.title}>AI settings</Text>
+              <Text style={styles.eyebrow}>CUE COMPANION</Text>
+              <Text style={styles.title}>Settings</Text>
             </View>
             <Pressable
               accessibilityLabel="Close settings"
@@ -70,7 +65,7 @@ export function SettingsSheet({
               <Text style={styles.securityText}>One quiet card for this session, up to 8 hours.</Text>
               <Pressable accessibilityRole="button" onPress={() => Alert.alert(
                 "Add Cue to Back Tap",
-                "Save your AI key first. In Shortcuts, create a shortcut with Ask for Input (Text), then Cue → Add Cue reminder. Pass the input into Reminder. In iPhone Settings → Accessibility → Touch → Back Tap, choose that shortcut for Double Tap or Triple Tap. Try it while unlocked first.",
+                "Open the configured Cue app once first. In Shortcuts, create a shortcut with Ask for Input (Text), then Cue → Add Cue reminder. Pass the input into Reminder. In iPhone Settings → Accessibility → Touch → Back Tap, choose that shortcut for Double Tap or Triple Tap. Try it while unlocked first.",
                 [{ text: "Close", style: "cancel" }, { text: "Open Shortcuts", onPress: () => { void Linking.openURL("shortcuts://").catch(() => Alert.alert("Open Shortcuts", "Open the Shortcuts app on your iPhone.")); } }],
               )} style={styles.shortcutButton}>
                 <Text style={styles.shortcutText}>Set up Back Tap</Text>
@@ -80,32 +75,9 @@ export function SettingsSheet({
           ) : null}
 
           <Text style={styles.description}>
-            Add an OpenAI API key to understand natural language and transcribe spoken reminders.
+            {cloudConfigured ? "Cloud AI is ready for typed and spoken reminders." : "Cloud AI hasn’t been configured in this build yet."}
           </Text>
-
-          <Text style={styles.label}>OPENAI API KEY</Text>
-          <TextInput
-            autoCapitalize="none"
-            autoCorrect={false}
-            onChangeText={onChangeApiKey}
-            placeholder="sk-..."
-            placeholderTextColor="#AAA8B0"
-            secureTextEntry
-            style={styles.input}
-            value={apiKey}
-          />
-
-          <View style={styles.securityNote}>
-            <Ionicons color="#74717D" name="shield-checkmark-outline" size={18} />
-            <Text style={styles.securityText}>
-              It is stored using your device&apos;s secure storage. Use a server-side proxy before shipping a public app.
-            </Text>
-          </View>
-
-          <Pressable onPress={onSave} style={({ pressed }) => [styles.saveButton, pressed && styles.savePressed]}>
-            <Text style={styles.saveText}>Save settings</Text>
-            <Ionicons color="#FFFFFF" name="arrow-forward" size={19} />
-          </Pressable>
+          <Text style={styles.securityText}>An internet connection is needed to add reminders.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -170,53 +142,11 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     marginTop: 19,
   },
-  label: {
-    color: "#77757E",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-    marginTop: 24,
-  },
-  input: {
-    backgroundColor: "#F5F4F7",
-    borderColor: "#E6E4EA",
-    borderRadius: 15,
-    borderWidth: 1,
-    color: "#24232A",
-    fontSize: 16,
-    height: 54,
-    paddingHorizontal: 15,
-  },
-  securityNote: {
-    alignItems: "flex-start",
-    flexDirection: "row",
-    gap: 9,
-    marginTop: 15,
-  },
   securityText: {
     color: "#74717C",
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
-  },
-  saveButton: {
-    alignItems: "center",
-    backgroundColor: "#1C1B20",
-    borderRadius: 16,
-    flexDirection: "row",
-    gap: 8,
-    height: 56,
-    justifyContent: "center",
-    marginTop: 25,
-  },
-  savePressed: {
-    opacity: 0.82,
-  },
-  saveText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "800",
   },
   companion: { borderTopColor: "#E6E4EA", borderTopWidth: 1, marginTop: 22, paddingTop: 12 },
   companionRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },

@@ -32,8 +32,8 @@ class CueCompanion: RCTEventEmitter {
     @objc func seedReminders(_ json: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { try await CueCompanionService.shared.seed(json) }
     }
-    @objc func configureAI(_ key: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-        perform(resolve, reject) { try CueCompanionKeychain.save(key); return NSNull() }
+    @objc func configureCloud(_ url: String, token: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        perform(resolve, reject) { try await CueCompanionService.shared.configureCloud(url, token: token); return NSNull() }
     }
     @objc func getStatus(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { await CueCompanionService.shared.status() }

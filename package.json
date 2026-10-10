@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "test:ios:paths": "node --test tests/ios-build-paths.test.cjs",
     "test:companion": "node --test tests/companion.test.cjs",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:worker": "node --test tests/worker.test.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
