@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-10T23:18:46+05:30 — Add reliable simulator and device launch scripts
+
+- Changed: Added explicit localhost simulator scripts and LAN physical-device scripts in `package.json`; added `.expo/` to `.gitignore`; documented the correct simulator, device, and optional tunnel commands in `README.md`.
+- Why: The missing `ios:device` script prevented the requested command from running, and a simulator should not depend on an ngrok tunnel.
+- Validation: Verified the Expo CLI supports the selected `--localhost` and `--lan` host modes; checked the new scripts with their `--help` passthrough after editing.
+- Limitations: A physical iPhone still needs Expo Go and access to the Mac on the same local network. A simulator needs Xcode and an installed iOS Simulator runtime.
+
 ## 2026-10-10T23:10:43+05:30 — Build Cue Expo reminder app
 
 - Changed: Created the Expo/TypeScript project and the Cue card UI in `App.tsx`, `src/components/`, and `src/lib/`; added microphone capture, OpenAI parsing/transcription, local storage, secure key storage, and local notification scheduling. Added the Expo configuration, package setup, sanitized environment example, and runnable project documentation.

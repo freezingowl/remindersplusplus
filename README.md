@@ -26,10 +26,12 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 
 ```bash
 npm install
-npm start
+npm run ios:simulator
 ```
 
-Then scan the Expo QR code with Expo Go, or press `i` / `a` for an available iOS / Android target.
+`ios:simulator` explicitly uses `localhost`, so it never waits for an ngrok tunnel. It starts Metro and opens the iOS simulator. For an Android emulator, use `npm run android`.
+
+For a physical iPhone, put the Mac and phone on the same Wi-Fi network, then run `npm run ios:device` and scan the QR code in Expo Go. This uses your LAN—not ngrok. If LAN discovery is blocked by the network, `npm run start:tunnel` remains an optional fallback.
 
 Useful commands:
 
@@ -37,6 +39,8 @@ Useful commands:
 npm run typecheck
 npm run lint
 npm run ios
+npm run ios:simulator
+npm run ios:device
 npm run android
 ```
 

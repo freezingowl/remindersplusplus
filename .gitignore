@@ -8,6 +8,7 @@
 
 # Common dependencies, build output, caches, and local tooling.
 node_modules/
+.expo/
 .next/
 dist/
 build/

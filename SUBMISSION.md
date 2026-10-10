@@ -8,7 +8,7 @@ Complete this file during the hackathon and use it to prepare your submission th
 - **Short description:** Cue is a voice-friendly personal reminder app that turns natural language into calm, actionable reminder cards and local notifications.
 - **Code repository URL:** To be added by the participant before submission.
 - **Final submitted implementation commit SHA:** Pending final participant commit.
-- **Working demo URL or local demo steps:** Run `npm install` then `npm start`; see the Demo flow in [README.md](README.md).
+- **Working demo URL or local demo steps:** Run `npm install` then `npm run ios:simulator`; see the Demo flow in [README.md](README.md).
 - **Demo access requirements:** Expo Go or a simulator/device. A valid OpenAI API key is required only for AI parsing and voice transcription; do not include a key in the submission.
 
 ## Participants
@@ -24,7 +24,7 @@ Participate solo or in a team of up to 4. Remove unused rows.
 - **Prerequisites and versions:** Node.js 24.3+ recommended, npm, and Expo Go or a simulator/device.
 - **Install command:** `npm install`
 - **Required environment variable names:** None for typed reminders. `EXPO_PUBLIC_OPENAI_API_KEY` is an optional development-only fallback; use `.env.example` without committing a real key.
-- **Start command:** `npm start`
+- **Start command:** `npm run ios:simulator` for iOS Simulator or `npm run ios:device` for Expo Go on a physical iPhone.
 - **Demo walkthrough:** Add a natural-language typed reminder, complete it by tapping its card, then configure an OpenAI key and demonstrate spoken capture with the microphone.
 - **Checks performed and results:** Typecheck, lint, and iOS bundle export passed; exact commands are in [README.md](README.md).
 - **Known limitations or incomplete features:** No editing, recurrence, sync, or production backend proxy yet. Physical-device microphone and notification testing remains for the participant.

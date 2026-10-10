@@ -4,9 +4,14 @@
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "start": "expo start --localhost",
+    "start:lan": "expo start --lan",
+    "start:tunnel": "expo start --tunnel",
+    "android": "expo start --android --localhost",
+    "android:device": "expo start --lan --go",
+    "ios": "expo start --ios --localhost",
+    "ios:simulator": "expo start --ios --localhost",
+    "ios:device": "expo start --lan --go",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
