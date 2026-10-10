@@ -4,12 +4,12 @@ Complete this file during the hackathon and use it to prepare your submission th
 
 ## Project
 
-- **Project name:** TODO
-- **Short description:** TODO — describe the problem, what you built, and who benefits.
-- **Code repository URL:** TODO
-- **Final submitted implementation commit SHA:** TODO
-- **Working demo URL or local demo steps:** TODO
-- **Demo access requirements:** TODO — explain any prerequisites without including private credentials.
+- **Project name:** Cue
+- **Short description:** Cue is a voice-friendly personal reminder app that turns natural language into calm, actionable reminder cards and local notifications.
+- **Code repository URL:** To be added by the participant before submission.
+- **Final submitted implementation commit SHA:** Pending final participant commit.
+- **Working demo URL or local demo steps:** Run `npm install` then `npm start`; see the Demo flow in [README.md](README.md).
+- **Demo access requirements:** Expo Go or a simulator/device. A valid OpenAI API key is required only for AI parsing and voice transcription; do not include a key in the submission.
 
 ## Participants
 
@@ -17,18 +17,18 @@ Participate solo or in a team of up to 4. Remove unused rows.
 
 | Participant name | GitHub handle | Contribution |
 | --- | --- | --- |
-| TODO | TODO | TODO |
+| To be added | To be added | Participant to confirm before submission |
 
 ## Run and demonstrate
 
-- **Prerequisites and versions:** TODO
-- **Install command:** TODO
-- **Required environment variable names:** TODO — use a sanitized example file if needed.
-- **Start command:** TODO
-- **Demo walkthrough:** TODO — brief steps showing the implemented features.
-- **Checks performed and results:** TODO
-- **Known limitations or incomplete features:** TODO
-- **Libraries, APIs, and public datasets used:** TODO — link sources and record attribution where required.
+- **Prerequisites and versions:** Node.js 24.3+ recommended, npm, and Expo Go or a simulator/device.
+- **Install command:** `npm install`
+- **Required environment variable names:** None for typed reminders. `EXPO_PUBLIC_OPENAI_API_KEY` is an optional development-only fallback; use `.env.example` without committing a real key.
+- **Start command:** `npm start`
+- **Demo walkthrough:** Add a natural-language typed reminder, complete it by tapping its card, then configure an OpenAI key and demonstrate spoken capture with the microphone.
+- **Checks performed and results:** Typecheck, lint, and iOS bundle export passed; exact commands are in [README.md](README.md).
+- **Known limitations or incomplete features:** No editing, recurrence, sync, or production backend proxy yet. Physical-device microphone and notification testing remains for the participant.
+- **Libraries, APIs, and public datasets used:** Expo Audio, Notifications, SecureStore, AsyncStorage, and OpenAI Chat Completions / Audio APIs; links and usage are listed in [README.md](README.md).
 - **AI usage record:** [AI_USAGE.md](AI_USAGE.md)
 - **Development change log:** [CHANGELOG.md](CHANGELOG.md)
 

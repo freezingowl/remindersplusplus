@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Cue",
+    "slug": "cue-reminders",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Cue to use your microphone so it can turn spoken reminders into cards.",
+          "recordAudioAndroid": true
+        }
+      ],
+      "expo-notifications",
+      "expo-secure-store"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "edgeToEdgeEnabled": true
+    }
+  }
+}

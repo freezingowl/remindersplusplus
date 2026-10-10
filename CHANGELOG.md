@@ -4,16 +4,12 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
-No project implementation has been recorded yet. Replace this sentence with entries as you build:
+## 2026-10-10T23:10:43+05:30 — Build Cue Expo reminder app
 
-```text
-## <actual timestamp> — <short change title>
-
-- Changed: <feature or files changed>
-- Why: <reason for the change>
-- Validation: <commands or manual checks actually run, with results>
-- Limitations: <known issues or "None identified in these checks">
-```
+- Changed: Created the Expo/TypeScript project and the Cue card UI in `App.tsx`, `src/components/`, and `src/lib/`; added microphone capture, OpenAI parsing/transcription, local storage, secure key storage, and local notification scheduling. Added the Expo configuration, package setup, sanitized environment example, and runnable project documentation.
+- Why: Deliver a simple, voice-capable reminder app whose card layout and composer reflect the supplied visual reference.
+- Validation: `npm run typecheck` passed; `npm run lint` passed with no warnings or errors; `npx expo export --platform ios --output-dir /private/tmp/cue-ios-export` passed and generated an iOS JavaScript bundle.
+- Limitations: The direct OpenAI key flow is for local hackathon development only; a production build needs a backend proxy. Device-level microphone and notification behavior still need physical-device confirmation.
 
 ## Template setup — 10 October 2026
 

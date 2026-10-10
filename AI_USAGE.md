@@ -4,11 +4,9 @@ Use Codex during the hackathon and briefly document its actual contribution here
 
 ## Event build log
 
-No participant AI usage has been recorded yet. Replace the placeholder row as you build. Mark human review as pending until someone has reviewed the contribution.
-
 | Date and time with timezone | Tool / model, if known | Task | Assistance and affected files | Human review / corrections | Validation and result |
 | --- | --- | --- | --- | --- | --- |
-| TODO | Codex | TODO | TODO | Pending | TODO |
+| 2026-10-10T23:10:43+05:30 | Codex | Build the Cue Expo reminder app from the supplied screenshot and requirements | Created the Expo app, card UI, natural-language composer, microphone-to-transcription flow, OpenAI integration, local reminders/notifications, secure key storage, setup files, and documentation. Affected `App.tsx`, `src/`, app configuration, package files, and project docs. | Pending participant review; no participant corrections recorded yet. | `npm run typecheck`, `npm run lint`, and iOS Expo export all passed. |
 
 ## Template preparation
 

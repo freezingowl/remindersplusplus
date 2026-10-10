@@ -1,56 +1,99 @@
-# DevDay Exchange Community Hackathon: Kochi
+# Cue
 
-A repository template for participants at the 10–11 October 2026 hackathon. It contains event rules and documentation scaffolding; build your project from scratch at the event.
+Cue is a calm, card-based personal reminder app for iOS and Android. Write a thought naturally — or speak it — and Cue turns it into a reminder card, understands an optional date and time with OpenAI, and schedules a local notification when it has one.
 
-**[Event and registration on Luma](https://luma.com/z10nz8gp)** · **[Event rules](RULES.md)** · **[Agent instructions](AGENTS.md)**
+Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 October 2026.
 
-## Event details
+## What it does
 
-| Detail | Information |
-| --- | --- |
-| Venue | JAIN University, Kochi |
-| Location | [Open the venue map](https://maps.app.goo.gl/Eme7gR7NDXSNRANu5) |
-| Rooms | 2008 and 2009 |
-| Check-in | 10 October 2026, 6:00 PM IST |
-| Kick-off | 10 October 2026, 6:30 PM IST |
-| Wrap-up | 11 October 2026, by 10:00 AM IST |
-| Participation | Solo or a team of up to 4 participants |
-| Theme | Open — build anything you like |
+- Captures typed reminders in a focused, card-first interface inspired by the supplied reference.
+- Records speech from the in-app microphone and sends it to OpenAI transcription.
+- Uses structured OpenAI output to turn natural language such as “Call Mum tomorrow at 8” into a title, detail, and due time.
+- Saves reminders on the device so the list survives a restart.
+- Schedules local notifications for future due times when notification permission is granted.
+- Lets people mark cards complete or long-press a card to remove it.
+- Stores an optional OpenAI key in secure device storage through the settings sheet.
 
-Keep your approved Luma QR code ready for entry, and bring your laptop and charger. Eligible checked-in participants will receive Codex credits and OpenAI API credits.
+## Run the app
 
-## Use this template
+### Prerequisites
 
-1. Select **Use this template → Create a new repository** on GitHub. Create your own project repository and clone it.
-2. Read [RULES.md](RULES.md) and [AGENTS.md](AGENTS.md) before building. Begin project implementation at the event.
-3. Fill in the project overview below as you build. Use any suitable language or framework, keeping the implementation simple.
-4. Record meaningful changes in [CHANGELOG.md](CHANGELOG.md) and your Codex usage in [AI_USAGE.md](AI_USAGE.md). Commit after completed milestones; aim for a meaningful checkpoint about every 30 minutes.
-5. Complete [SUBMISSION.md](SUBMISSION.md) with your code repository, short project description, and working demo. Follow submission instructions announced by the organizers.
+- Node.js 24.3 or newer is recommended by the installed React Native version. The project bundled successfully with Node 24.2.0, but npm reports an engine warning on that version.
+- Expo Go or an iOS/Android simulator/device. A physical device is best for trying microphone recording and notifications.
+- An OpenAI API key only if you want natural-language parsing and voice capture.
 
-This template has no application code or required technology stack. The documentation and commit cadence are repository workflow guidance; the event participation rules are in [RULES.md](RULES.md).
+### Install and start
 
-## Project overview — complete during the event
+```bash
+npm install
+npm start
+```
 
-- **Project name:** TODO
-- **Short description:** TODO — what it does, who it helps, and why it matters.
-- **Team:** TODO — participant names and GitHub handles; maximum 4 members.
-- **Working demo:** TODO — link or local demo instructions.
-- **Technology stack:** TODO
+Then scan the Expo QR code with Expo Go, or press `i` / `a` for an available iOS / Android target.
 
-### Run the project
+Useful commands:
 
-Replace these placeholders with commands that actually work for your project:
+```bash
+npm run typecheck
+npm run lint
+npm run ios
+npm run android
+```
 
-1. Prerequisites and versions: TODO
-2. Dependency installation: TODO
-3. Environment setup: TODO — list required variable names and provide a sanitized `.env.example` if needed.
-4. Start the project: TODO
-5. Run checks or tests: TODO
+## Add an OpenAI key
 
-### Current status
+Open the gear button in the top-right of Cue and paste your key into **AI settings**. It is saved with Expo Secure Store on that device.
 
-- Working features: TODO
-- Known limitations: TODO
-- Libraries, APIs, and public datasets used: TODO — include source links and applicable attribution.
+For local development only, you can instead copy `.env.example` to `.env` and set `EXPO_PUBLIC_OPENAI_API_KEY`. Do not commit the `.env` file.
 
-See [AI_USAGE.md](AI_USAGE.md) for AI assistance and [CHANGELOG.md](CHANGELOG.md) for the development record.
+> The direct device-to-OpenAI route exists to make this hackathon prototype easy to demo. It is not safe for a public production app because a client-side key can be extracted. Put OpenAI calls behind an authenticated server-side proxy before shipping.
+
+Without an API key, typed reminders still save normally; Cue simply keeps the user’s words as the title and does not infer a date.
+
+## Demo flow
+
+1. Open Cue and type: `Remind me to call Mum tomorrow at 8`.
+2. Tap the up-arrow. With a key configured, Cue creates a card with a parsed time and asks for notification permission when it schedules it.
+3. Tap a card to complete it; it becomes a warm red completion card and cancels its pending notification.
+4. Add a key, tap the microphone, speak a reminder, then tap the mic again. Cue transcribes it and adds the resulting card automatically.
+5. Long-press a card to remove it.
+
+## Architecture and integrations
+
+The app deliberately stays small:
+
+- `App.tsx` coordinates UI state, recording, parsing, persistence, and card actions.
+- `src/components/` contains the composer, reminder card, and settings sheet.
+- `src/lib/reminderParser.ts` calls OpenAI’s Chat Completions API with a strict JSON schema and its transcription endpoint.
+- `src/lib/storage.ts` persists reminders with AsyncStorage and keys with Secure Store.
+- `src/lib/notifications.ts` owns local notification setup and scheduling.
+
+Libraries and services:
+
+- [Expo Audio](https://docs.expo.dev/versions/latest/sdk/audio/) for microphone capture.
+- [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/) for local notifications.
+- [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/) and AsyncStorage for on-device storage.
+- [OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat) structured output for reminder extraction and [OpenAI Audio](https://platform.openai.com/docs/api-reference/audio) transcription for voice input.
+
+## Validation performed
+
+On 10 October 2026:
+
+- `npm run typecheck` passed.
+- `npm run lint` passed with no warnings or errors.
+- `npx expo export --platform ios --output-dir /private/tmp/cue-ios-export` passed and produced an iOS JavaScript bundle.
+
+## Known limitations
+
+- The prototype does not yet offer editing, recurring reminders, categories, sync, or sign-in.
+- Local notification behavior depends on the device’s permission and operating-system scheduling policy.
+- Voice transcription needs network access and a valid OpenAI key.
+- The app uses direct API requests only for the hackathon demo; production needs a backend proxy.
+
+## Hackathon material
+
+- [Event rules](RULES.md)
+- [Agent and project workflow](AGENTS.md)
+- [Development change log](CHANGELOG.md)
+- [Codex usage record](AI_USAGE.md)
+- [Submission checklist](SUBMISSION.md)
