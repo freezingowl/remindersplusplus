@@ -1,13 +1,15 @@
 {
-  "name": "cue-ai",
+  "name": "floral-frost-2cd1",
+  "account_id": "b356ab583586fa641ed325fc13cf7bbd",
   "main": "worker.mjs",
-  "compatibility_date": "2026-10-11",
+  "compatibility_date": "2026-10-10",
   "workers_dev": true,
+  "keep_vars": true,
   "d1_databases": [
     {
       "binding": "CUE_DB",
       "database_name": "cue-ai-limits",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "de70c21f-e844-4c70-b8e7-a2a909970f2b"
     }
   ],
   "observability": { "enabled": false }

@@ -2,11 +2,11 @@
 
 The screenshot's **“Cloud AI isn’t configured”** error occurred in the native Shortcut before any AI request. The new build embeds the Cue Worker origin/access token, so the Shortcut no longer relies on JavaScript opening once to save them. An older installed binary does not gain this fix from a JavaScript reload: rebuild and install it.
 
-There is a second blocker: the last live `/health` check returned HTTP 503 with `{"ok":false}`. Finish the server setup below before testing reminders. That response does not identify which setting is missing in the older deployed Worker.
+**This local checkout's server setup is complete as of 11 October 2026, 04:58 IST.** The deployed Worker has the D1 binding/schema and matching Cue token; authenticated readiness passed. The exact sushi sentence returned **Make sushi** with a deadline two minutes ahead in **2.524 seconds**. Written-out duration, explicit local time and ambiguous input also passed. Start at **step 3** to install and test on your phone. Steps 1–2 remain here for a fresh deployment or troubleshooting. Backend checks do not create reminders on the phone.
 
-## 1. Finish the Worker
+## 1. Configure a fresh Worker if needed
 
-- Replace the deployed JavaScript with the current [worker/worker.mjs](worker/worker.mjs) and deploy it. This version adds diagnostics; the AI model and quota limits remain the same.
+- Replace the deployed JavaScript with the current [worker/worker.mjs](worker/worker.mjs) and deploy it. This includes runtime-compatible upstream requests and server-calculated elapsed deadlines; the AI model and quota limits remain the same.
 - Create/select the D1 database, execute [worker/schema.sql](worker/schema.sql) in its Console, and bind it to the Worker with the exact name **CUE_DB**.
 - Add **OPENAI_API_KEY** as a Cloudflare Secret using your OpenAI key.
 - Add **CUE_CLIENT_TOKEN** as a Cloudflare Secret. Its value must exactly match **EXPO_PUBLIC_CUE_CLIENT_TOKEN** from the local `.env` in this app folder. Do not paste the OpenAI key into this field. The token has already been generated locally; preserve it rather than generating a different one.
@@ -94,4 +94,4 @@ Do not complete the new reminder before its deadline if you want to test the ale
 
 Each activity can remain active for up to eight hours, and can be dismissed. Updating it does not reset that lifetime; later enabled captures can start a new session. Reminders/notifications persist independently. This is not an always-running process.
 
-Automated verification uses mocked OpenAI responses and unsigned compilation. No physical-device success is claimed until you complete the steps above.
+Offline tests use mocked OpenAI responses, including one test in the real Workers runtime. Four live text AI cases have also passed against the deployed Worker. Native compilation was unsigned; physical-device capture, notifications and Back Tap remain to be verified with the steps above. Voice transcription has not been tested against the live API.

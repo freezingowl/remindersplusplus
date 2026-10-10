@@ -24,6 +24,7 @@
     "test:companion": "node --test tests/companion.test.cjs",
     "lint": "eslint .",
     "test:worker": "node --test tests/worker.test.mjs",
+    "test:worker:runtime": "node --test tests/worker.runtime.test.mjs",
     "ios:build:standalone": "expo run:ios --device --configuration Release --no-bundler",
     "cloud:check": "node scripts/checkCloud.cjs"
   },
@@ -46,7 +47,9 @@
     "@types/react": "~19.2.14",
     "eslint": "^9.39.1",
     "eslint-config-expo": "~57.0.0",
+    "miniflare": "5.20261006.1-alpha",
     "patch-package": "^8.0.1",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "wrangler": "^4.149.0"
   }
 }

@@ -2,6 +2,8 @@
 
 Cue's app and native iOS Shortcut call this Worker. Only the Worker calls OpenAI; reminders and notification schedules remain on the phone. This deployment is intended for a private hackathon demo.
 
+The participant's existing [floral-frost-2cd1 deployment](https://floral-frost-2cd1.ajaytcr007.workers.dev/health) is configured and verified as of 11 October 2026, 04:58 IST. `CUE_DB` is a **D1 database binding**, pointing to the APAC database `cue-ai-limits`; it is not a string environment variable. The existing OpenAI secret is retained and the Cue token matches the ignored local `.env`. Readiness and four live text cases passed, including the exact sushi prompt in 2.524 seconds. Phone installation and testing are the next steps in [TESTING.md](../TESTING.md).
+
 ## Deploy by copy/paste in Cloudflare
 
 1. In **Workers & Pages**, create a Worker named `cue-ai`. Open **Edit code**, replace the starter JavaScript with **all of [worker.mjs](worker.mjs)**, and deploy. This is a standalone ES module: no build, imports, or npm dependencies are required.
@@ -59,7 +61,9 @@ No HTTP action or secret is needed inside the Shortcut. The native Cue action ca
 
 ## Model and limits
 
-Text parsing uses [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) through the Responses API with `reasoning.effort: "none"`, low verbosity, strict structured output, and a 512-token output cap. The documented standard text price when selected was $0.10 per million input tokens and $0.50 per million output tokens. Actual latency needs measurement on the deployed Worker; no instant-response guarantee is made. Voice uses [gpt-4o-mini-transcribe](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe), then the same text parser.
+Text parsing uses [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) through the Responses API with `reasoning.effort: "none"`, low verbosity, strict structured output, and a 512-token output cap. The documented standard text price when selected was $0.10 per million input tokens and $0.50 per million output tokens. Four successful live text samples took 1.579–2.615 seconds; no instant-response guarantee is made. Voice uses [gpt-4o-mini-transcribe](https://developers.openai.com/api/docs/models/gpt-4o-mini-transcribe), then the same text parser; live transcription remains untested.
+
+The internal AI schema extracts an elapsed duration as a nullable `delay` object (amount plus seconds/minutes/hours). The Worker calculates its deadline from the server timestamp at admission, independent of model timezone arithmetic or response latency. Explicit calendar times instead use `dueAt`, with the device's local clock/time zone supplied in the prompt. Conflicting time fields, invalid durations, delays outside one second–366 days, and deadlines already passed by completion are rejected. The app/Shortcut response contract remains `{reminder:{title,note,dueAt}}`.
 
 | Endpoint | Global requests/minute | Global requests/UTC day |
 | --- | ---: | ---: |
@@ -86,13 +90,14 @@ Run the repository's offline tests:
 
 ```bash
 npm run test:worker
+npm run test:worker:runtime
 npm run typecheck
 npm run lint
 npm run test:companion
 npm run test:ios:paths
 ```
 
-The twelve Worker tests use Node 24's experimental built-in SQLite to execute the actual quota SQL; OpenAI HTTP responses are mocked. They verify simultaneous requests across separate handler instances, minute/daily resets, fail-closed storage, validation, bounded uploads, output/date/refusal checks, sanitized errors, timeouts, audio routing, explicit CORS, connection diagnostics and the preflight stopping before paid calls when not ready. They do not claim Cloudflare deployment or live model results.
+The fifteen Worker tests use Node 24's experimental built-in SQLite to execute the actual quota SQL; OpenAI HTTP responses are mocked. They verify simultaneous requests across separate handler instances, minute/daily resets, fail-closed storage, validation, bounded uploads, output/date/refusal checks, elapsed deadlines across timezone/date boundaries, sanitized errors, timeouts, audio routing, explicit CORS, connection diagnostics and the preflight stopping before paid calls when not ready. A separate Miniflare test runs the actual Workers request implementation and D1 against fake credentials/mocked outbound responses, checking successful capture and rejection of redirects without credential forwarding. Its temporary local runtime is disposed after the test. Neither offline suite substitutes for the live parser/device checks.
 
 Troubleshooting: `not_configured` means a binding/secret is absent or the Cue token is malformed; `unauthorized` means app/Worker Cue tokens differ; `quota_unavailable` usually means the D1 binding or schema needs fixing; `ai_configuration` means OpenAI rejected the key or model access; `rate_limit`/`daily_limit` requires waiting until the applicable window resets. `/health` can return true even when the table or upstream key is invalid.
 
@@ -100,7 +105,13 @@ Browser requests are denied by default. Only for web testing, set the Worker pla
 
 ## Optional Wrangler deployment
 
-The dashboard steps above require no CLI. If you prefer Wrangler, [wrangler.jsonc](wrangler.jsonc) defines the same bindings; replace its database ID with the ID Cloudflare gives you, then run from `worker/`:
+The dashboard steps above require no CLI. This checkout's [wrangler.jsonc](wrangler.jsonc) already targets the participant's existing Worker/account and created D1 database. From the app root, future source deployments use the installed Wrangler:
+
+```bash
+npx wrangler deploy --config worker/wrangler.jsonc
+```
+
+For a different account/deployment, replace `name`, `account_id` and the D1 `database_id` with your own identifiers; create the database first. Keep `compatibility_date` at a supported UTC date rather than a future local date. Then run from `worker/`:
 
 ```bash
 npx wrangler d1 execute cue-ai-limits --remote --file=schema.sql

@@ -8,7 +8,7 @@ const TOKEN = "test-access-token-with-32-characters";
 const START = Date.parse("2026-10-11T00:00:10Z");
 const DUE = "2026-10-12T20:00:00+05:30";
 const completion = (value = { title: "Call Mum", note: "", dueAt: DUE }) => ({
-  status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(value) }] }],
+  status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify({ delay: null, ...value }) }] }],
 });
 
 // Execute the actual production SQL against SQLite, through D1's API shape.
@@ -66,6 +66,7 @@ test("extracts with Luna, no reasoning, strict output and server time; keeps key
   const { url, options } = f.calls[0];
   assert.equal(url, "https://api.openai.com/v1/responses");
   assert.equal(options.headers.Authorization, "Bearer fake-upstream-key");
+  assert.equal(options.redirect, "manual");
   const body = JSON.parse(options.body);
   assert.equal(body.model, "gpt-6-luna");
   assert.equal(body.reasoning.effort, "none");
@@ -74,7 +75,41 @@ test("extracts with Luna, no reasoning, strict output and server time; keeps key
   assert.equal(body.max_output_tokens, 512);
   assert.match(body.input[0].content, /2026-10-11T00:00:10.000Z/);
   assert.match(body.input[0].content, /Asia\/Kolkata/);
+  assert.match(body.input[0].content, /05:30:10/); // Local clock supplied; no model UTC conversion needed.
   assert.equal(f.db.row().minute_count, 1);
+});
+
+test("relative durations use the submission clock across timezone and date boundaries", async (t) => {
+  for (const [timeZone, submittedAt, delay, milliseconds] of [
+    ["Asia/Kolkata", Date.parse("2026-10-10T23:25:21Z"), { amount: 2, unit: "minutes" }, 120_000],
+    ["UTC", Date.parse("2026-12-31T23:59:30Z"), { amount: 90, unit: "seconds" }, 90_000],
+    ["America/New_York", Date.parse("2026-11-01T05:59:30Z"), { amount: 1.5, unit: "hours" }, 5_400_000],
+  ]) {
+    const f = fixture(t, { upstream: async () => {
+      f.setTime(submittedAt + 3000); // Network latency must not move the deadline.
+      return Response.json(completion({ title: "Make sushi", note: "", dueAt: "", delay }));
+    } });
+    f.setTime(submittedAt);
+    const response = await f.worker.fetch(request({ text: "Make sushi in 2 minutes", timeZone }), f.env);
+    assert.equal(response.status, 200);
+    assert.equal(Date.parse((await response.json()).reminder.dueAt), submittedAt + milliseconds);
+  }
+});
+
+test("relative time rejects conflicting, malformed, excessive and already-expired durations", async (t) => {
+  for (const delay of [undefined, {}, { amount: "2", unit: "minutes" }, { amount: 0, unit: "minutes" },
+    { amount: -1, unit: "hours" }, { amount: 400 * 24, unit: "hours" }, { amount: 2, unit: "days" },
+    { amount: 2, unit: "toString" }]) {
+    const f = fixture(t, { upstream: async () => Response.json(completion({ title: "Task", note: "", dueAt: "", delay })) });
+    assert.equal(await code(await f.worker.fetch(request(), f.env)), "invalid_time");
+  }
+  const conflict = fixture(t, { upstream: async () => Response.json(completion({ title: "Task", note: "", dueAt: DUE, delay: { amount: 2, unit: "minutes" } })) });
+  assert.equal(await code(await conflict.worker.fetch(request(), conflict.env)), "invalid_time");
+  const expired = fixture(t, { upstream: async () => {
+    expired.setTime(START + 3000);
+    return Response.json(completion({ title: "Task", note: "", dueAt: "", delay: { amount: 1, unit: "seconds" } }));
+  } });
+  assert.equal(await code(await expired.worker.fetch(request(), expired.env)), "past_time");
 });
 
 test("rejects unauthorized requests, browser origins, malformed input and missing configuration before paid calls", async (t) => {
@@ -88,6 +123,14 @@ test("rejects unauthorized requests, browser origins, malformed input and missin
   assert.equal((await f.worker.fetch(request(), { ...f.env, CUE_CLIENT_TOKEN: "short" })).status, 503);
   assert.equal(f.calls.length, 0);
   assert.equal(f.db.row(), undefined);
+});
+
+test("upstream redirects are rejected without forwarding credentials or retrying", async (t) => {
+  const f = fixture(t, { upstream: async () => new Response(null, { status: 307, headers: { Location: "https://untrusted.example" } }) });
+  assert.equal(await code(await f.worker.fetch(request(), f.env)), "ai_unavailable");
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].options.redirect, "manual");
+  assert.equal(f.calls[0].url, "https://api.openai.com/v1/responses");
 });
 
 test("enforces actual streamed bytes without trusting Content-Length", async (t) => {
