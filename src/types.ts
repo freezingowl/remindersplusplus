@@ -1,4 +1,4 @@
-export type ReminderSource = "text" | "voice";
+export type ReminderSource = "text" | "voice" | "shortcut";
 
 export type Reminder = {
   id: string;

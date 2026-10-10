@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T01:31:48+05:30 — Add the minimal native Lock Screen companion
+
+- Changed: Added tracked Swift ActivityKit/WidgetKit/App Intents sources, a React Native bridge, a shared native reminder store, Keychain access for Shortcuts, and an idempotent Expo extension plugin. Added a settings session switch and Back Tap instructions, migrated existing reminders once, and connected in-app/Shortcut completion and deletion to the same store. Added native-project synchronization and selection/prebuild tests.
+- Why: Match the supplied simple Lock Screen references: a tiny face mark, prominent single reminder, brief processing/added acknowledgement, and restoration of the due/upcoming card after capture. Use the OS's default translucent surface and collapse the empty card.
+- Validation: Typecheck/lint, two companion checks including seven compiled Swift selection scenarios, and four existing path regression checks passed. Unsigned Debug iPhone and Simulator builds passed; verified widget embedding, Live Activities support, matching bundle versions, and extracted App Intents metadata. Corrected missing extension dependency initialization, version mismatch, one icon name, and a lint issue during verification.
+- Limitations: Simulator UI control was not approved; rendered glass, exact stale-date transition, real AI calls, background Shortcuts, Back Tap, signed install, and physical-device behavior remain unverified. iOS limits sessions to eight active hours; no automatic renewal or APNs backend exists. Only the earliest future candidate is preloaded for the due display; local notifications deliver actual alerts. Custom iPhone builds require iOS 17+. Existing native signing and unrelated untracked files were preserved.
+
 ## 2026-10-11T00:28:26+05:30 — Fix iOS build scripts for space-containing project paths
 
 - Changed: Added `patches/expo-constants+57.0.21.patch`, based on Expo PR #48747, to quote the Constants script invocation and `PROJECT_DIR` lookup. Refreshed the existing Pods project. Added the idempotent `plugins/withIosBuildPathQuotes.cjs` config plugin in `app.json` and quoted the existing Cue RN bundle-phase invocation. Added `tests/ios-build-paths.test.cjs`, the `test:ios:paths` command, and troubleshooting/validation documentation.

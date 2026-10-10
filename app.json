@@ -17,7 +17,8 @@
       ],
       "expo-notifications",
       "expo-secure-store",
-      "./plugins/withIosBuildPathQuotes.cjs"
+      "./plugins/withIosBuildPathQuotes.cjs",
+      "./plugins/withCueCompanion.cjs"
     ],
     "ios": {
       "bundleIdentifier": "com.remindersplusplus.cue",

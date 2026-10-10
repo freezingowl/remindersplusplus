@@ -17,9 +17,11 @@
     "ios:go:device": "expo start --lan --go",
     "ios:device": "expo run:ios --device",
     "ios:build:device": "expo run:ios --device --no-bundler",
+    "ios:sync:companion": "node scripts/syncCompanion.cjs",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test:ios:paths": "node --test tests/ios-build-paths.test.cjs",
+    "test:companion": "node --test tests/companion.test.cjs",
     "lint": "eslint ."
   },
   "dependencies": {

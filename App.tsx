@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -25,6 +26,17 @@ import {
 import { Composer } from "./src/components/Composer";
 import { ReminderCard } from "./src/components/ReminderCard";
 import { SettingsSheet } from "./src/components/SettingsSheet";
+import {
+  captureWithCompanion,
+  companionStatus,
+  configureCompanionAI,
+  hasCompanion,
+  observeCompanion,
+  refreshCompanion,
+  removeWithCompanion,
+  setCompanionEnabled,
+  toggleWithCompanion,
+} from "./src/lib/companion";
 import {
   cancelReminderNotification,
   scheduleReminderNotification,
@@ -67,6 +79,9 @@ export default function App() {
   const [isCreating, setIsCreating] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCompanionActive, setIsCompanionActive] = useState(false);
+  const [isCompanionBusy, setIsCompanionBusy] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -90,13 +105,18 @@ export default function App() {
 
   useEffect(() => {
     async function hydrate(): Promise<void> {
-      const [storedReminders, savedKey] = await Promise.all([
-        loadReminders(),
-        loadApiKey(),
-      ]);
-      setReminders(storedReminders);
-      setApiKey(savedKey || developmentApiKey);
-      setIsReady(true);
+      try {
+        const [storedReminders, savedKey] = await Promise.all([loadReminders(), loadApiKey()]);
+        const key = savedKey || developmentApiKey;
+        await configureCompanionAI(key);
+        await refreshCompanion();
+        setReminders(storedReminders);
+        setApiKey(key);
+        if (hasCompanion) setIsCompanionActive((await companionStatus()).active);
+        setIsReady(true);
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Couldn’t load your reminders. Reopen Cue to try again.");
+      }
     }
 
     void hydrate();
@@ -108,14 +128,45 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isReady || !hasCompanion) return;
+    async function sync(): Promise<void> {
+      try {
+        setReminders(await loadReminders());
+        setIsCompanionActive((await companionStatus()).active);
+      } catch (error) {
+        Alert.alert("Couldn’t refresh Cue", error instanceof Error ? error.message : "Please reopen Cue.");
+      }
+    }
+    const unsubscribe = observeCompanion(() => void sync());
+    void sync();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshCompanion().then(sync).catch(() => void sync());
+    });
+    return () => { unsubscribe(); subscription.remove(); };
+  }, [isReady]);
+
+  useEffect(() => {
     if (isReady) {
-      void saveReminders(reminders);
+      void saveReminders(reminders).catch(() => Alert.alert("Couldn’t save reminders", "Please try again."));
     }
   }, [isReady, reminders]);
 
   function openSettings(): void {
     setApiKeyDraft(apiKey);
     setIsSettingsOpen(true);
+    if (hasCompanion) void companionStatus().then((status) => setIsCompanionActive(status.active)).catch(() => {});
+  }
+
+  async function toggleCompanion(enabled: boolean): Promise<void> {
+    setIsCompanionBusy(true);
+    try {
+      const status = await setCompanionEnabled(enabled);
+      setIsCompanionActive(status.active);
+    } catch (error) {
+      Alert.alert("Couldn’t change the companion", error instanceof Error ? error.message : "Open iPhone Settings and allow Live Activities for Cue.");
+    } finally {
+      setIsCompanionBusy(false);
+    }
   }
 
   async function saveSettings(): Promise<void> {
@@ -132,11 +183,26 @@ export default function App() {
 
   async function createReminder(rawText: string, source: ReminderSource): Promise<void> {
     const text = rawText.trim();
-    if (!text || isCreating) {
+    if (!text || isCreating || !isReady) {
       return;
     }
 
     setIsCreating(true);
+    if (hasCompanion) {
+      try {
+        const saved = await captureWithCompanion(text, source);
+        setReminders(saved);
+        setInput("");
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const added = saved[0];
+        showToast(added?.notificationId ? "Reminder saved and scheduled." : added?.dueAt ? "Reminder saved. Enable notifications for an alert." : apiKey ? "Reminder saved. No time set." : "Saved your words. Add an AI key to understand times.");
+      } catch (error) {
+        Alert.alert("Couldn’t add reminder", error instanceof Error ? error.message : "Please try again.");
+      } finally {
+        setIsCreating(false);
+      }
+      return;
+    }
     let parsed: ParsedReminder;
     let usedFallback = false;
 
@@ -171,8 +237,9 @@ export default function App() {
     showToast(
       usedFallback
         ? "Saved your words. AI parsing wasn’t available."
-        : reminder.dueAt
+        : reminder.notificationId
           ? "Reminder saved and scheduled."
+          : reminder.dueAt ? "Reminder saved. Enable notifications for an alert."
           : "Reminder saved.",
     );
     setIsCreating(false);
@@ -244,6 +311,15 @@ export default function App() {
 
   async function toggleReminder(reminder: Reminder): Promise<void> {
     const completed = !reminder.completed;
+    if (hasCompanion) {
+      try {
+        setReminders(await toggleWithCompanion(reminder.id, completed));
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (error) {
+        Alert.alert("Couldn’t update reminder", error instanceof Error ? error.message : "Please try again.");
+      }
+      return;
+    }
     let notificationId = reminder.notificationId;
 
     if (completed) {
@@ -273,6 +349,12 @@ export default function App() {
         text: "Remove",
         style: "destructive",
         onPress: () => {
+          if (hasCompanion) {
+            void removeWithCompanion(reminder.id).then(setReminders).catch((error) => {
+              Alert.alert("Couldn’t remove reminder", error instanceof Error ? error.message : "Please try again.");
+            });
+            return;
+          }
           void cancelReminderNotification(reminder.notificationId);
           setReminders((current) => current.filter((item) => item.id !== reminder.id));
         },
@@ -337,7 +419,7 @@ export default function App() {
             )
           ) : (
             <View style={styles.loading}>
-              <ActivityIndicator color="#FF4B3A" />
+              {loadError ? <Text style={styles.emptyText}>{loadError}</Text> : <ActivityIndicator color="#FF4B3A" />}
             </View>
           )}
         </ScrollView>
@@ -350,7 +432,7 @@ export default function App() {
         ) : null}
 
         <Composer
-          isProcessing={isProcessing}
+          isProcessing={isProcessing || !isReady}
           isRecording={recorderState.isRecording}
           onChangeText={setInput}
           onSubmit={() => void createReminder(input, "text")}
@@ -364,6 +446,10 @@ export default function App() {
         onChangeApiKey={setApiKeyDraft}
         onClose={() => setIsSettingsOpen(false)}
         onSave={() => void saveSettings()}
+        companionAvailable={hasCompanion}
+        companionActive={isCompanionActive}
+        companionBusy={isCompanionBusy}
+        onToggleCompanion={(enabled) => void toggleCompanion(enabled)}
         visible={isSettingsOpen}
       />
     </SafeAreaView>

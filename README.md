@@ -13,6 +13,7 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 - Schedules local notifications for future due times when notification permission is granted.
 - Lets people mark cards complete or long-press a card to remove it.
 - Stores an optional OpenAI key in secure device storage through the settings sheet.
+- Adds a minimal native Lock Screen companion and a Shortcuts action in custom iPhone builds: tiny face mark, processing/added feedback, and one due or upcoming reminder.
 
 ## Run the app
 
@@ -22,6 +23,7 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 - Expo Go or an iOS/Android simulator/device. A physical device is best for trying microphone recording and notifications; Xcode is required to compile a custom iOS development build.
 - [Expo SDK 57 officially requires Xcode 26.4 or newer](https://docs.expo.dev/versions/latest/). This project includes a temporary compatibility patch for the specific ExpoModulesJSI compiler errors on Xcode 26.3; that framework compiled successfully on 26.3, but a complete signed app build on that toolchain is not yet verified.
 - An OpenAI API key only if you want natural-language parsing and voice capture.
+- iOS 17 or newer for the custom Cue app and its interactive Live Activity. Expo Go and Android retain the ordinary reminder UI and do not include the companion.
 
 ### Install a development build on a wired iPhone
 
@@ -33,6 +35,8 @@ npm run ios:build:device
 ```
 
 Choose the wired iPhone when Expo asks. The first build can take a few minutes because it generates the native iOS project, installs pods, signs the app for development, and installs Cue. You only need to rebuild when native dependencies or `app.json` changes.
+
+For an existing `ios/` checkout, run `npm run ios:sync:companion` before rebuilding. This copies the tracked Swift sources into the native project, adds the extension, and preserves the app's development team. For a fresh checkout, the registered config plugin does this during prebuild. Use `ios/Cue.xcworkspace` in Xcode and ensure **CueCompanion** has an appropriate development provisioning profile as well as **Cue**. A JavaScript reload cannot install this extension.
 
 Then start the development server through a tunnel:
 
@@ -106,6 +110,23 @@ Without an API key, typed reminders still save normally; Cue simply keeps the us
 4. Add a key, tap the microphone, speak a reminder, then tap the mic again. Cue transcribes it and adds the resulting card automatically.
 5. Long-press a card to remove it.
 
+## Lock Screen companion and Back Tap
+
+1. Rebuild and install the custom iPhone app. Launch it once, save your AI key in Settings, and turn on **Lock Screen companion**. Allow Live Activities and notifications when prompted.
+2. In Apple's **Shortcuts** app, create a shortcut with **Ask for Input**, using input type **Text**. Add **Cue → Add Cue reminder** and pass the provided input into its **Reminder** parameter. Save it as “Add to Cue.”
+3. In iPhone **Settings → Accessibility → Touch → Back Tap**, assign that shortcut to Double Tap or Triple Tap. Start testing with the phone unlocked; the input sheet and authentication behavior while locked need physical-device verification.
+4. Back Tap and enter a clear sentence such as `Remind me to call Mum tomorrow at 8 PM`. The native action sends it to OpenAI, saves its title and optional timezone-aware due date into Cue's store, and schedules a local notification if permitted.
+
+The card uses the system's default translucent Lock Screen background, allowing iOS to choose its native appearance. It does not put an opaque colored panel over that surface or assume the app-only `glassEffect` modifier works inside a widget. Actual Liquid Glass appearance depends on the OS and needs device review.
+
+With nothing waiting, the card collapses to the small face and “cue” mark. During capture, the main text reads **Adding reminder…**; successful persistence briefly shows **Added: [task]** with its time, then restores the previous incomplete reminder. A due reminder takes priority over upcoming tasks. Errors show a short message and restore the card. The small mark changes with the state, with brief transitions rather than a continuously animated mascot. Tap the completion circle to finish the displayed task and reveal the next one. Opening Cue again also synchronizes Shortcut-created tasks into the app list.
+
+Timing has two separate mechanisms. The OS schedules the actual notification. The Live Activity preloads the earliest upcoming task and sets its `staleDate` to that deadline; when WidgetKit marks that snapshot stale, the view can display that preloaded task as **NOW**. This is a narrow visual transition, not app execution or a general queue scheduler. Further ranking/data updates occur when Cue, its Shortcut, or a completion action runs. Exact transition timing still needs runtime verification. A backend with ActivityKit push updates is needed for arbitrary unattended changes to the same card; background refresh does not guarantee exact-time execution.
+
+An active Live Activity lasts **at most eight hours**, and people can dismiss it. Ended content can remain on the Lock Screen for up to four additional hours. Updating the same activity does not renew that limit. Start a new session from Settings or a later Shortcut invocation after it ends. There is no automatic 24/7 renewal.
+
+The Shortcut needs a saved AI key and network access; this implementation calls OpenAI directly from the native app, and does not include an offline AI model or backend. Ambiguous or missing times remain **No time set** rather than being invented; a parsed time in the past is rejected. Alerts denied by iOS do not prevent saving, and the acknowledgement reports when alerts are unavailable. Completing or deleting a reminder cancels its pending/delivered notification.
+
 ## Architecture and integrations
 
 The app deliberately stays small:
@@ -113,8 +134,11 @@ The app deliberately stays small:
 - `App.tsx` coordinates UI state, recording, parsing, persistence, and card actions.
 - `src/components/` contains the composer, reminder card, and settings sheet.
 - `src/lib/reminderParser.ts` calls OpenAI’s Chat Completions API with a strict JSON schema and its transcription endpoint.
-- `src/lib/storage.ts` persists reminders with AsyncStorage and keys with Secure Store.
-- `src/lib/notifications.ts` owns local notification setup and scheduling.
+- `src/lib/storage.ts` uses AsyncStorage in Expo Go/Android and migrates its existing reminders once into the native store in custom iPhone builds. Native mutations are authoritative, so a stale UI snapshot cannot overwrite a Shortcut capture.
+- `src/lib/companion.ts` connects the app to the native service and observes shared reminder changes. Native reminder JSON lives in the app's Application Support directory; the Live Activity only receives a small display snapshot.
+- `native/companion/` contains the Swift actor, secure native key storage, ActivityKit attributes, SwiftUI widget, and App Intents. Native Shortcuts run without requiring the React Native screen to be open. Both app and Shortcut mutation paths use this service in a custom iPhone build.
+- `plugins/withCueCompanion.cjs` adds the app source membership, embedded widget target, and minimum iOS version during prebuild. `scripts/syncCompanion.cjs` applies it to an existing project without regenerating it.
+- `src/lib/notifications.ts` schedules notifications in Expo Go/Android; the native service uses UserNotifications in custom iPhone builds. The AI key is mirrored from Secure Store to a native Keychain item so an App Intent can use it without the JS runtime.
 
 Libraries and services:
 
@@ -122,6 +146,9 @@ Libraries and services:
 - [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/) for local notifications.
 - [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/) and AsyncStorage for on-device storage.
 - [OpenAI Chat Completions](https://platform.openai.com/docs/api-reference/chat) structured output for reminder extraction and [OpenAI Audio](https://platform.openai.com/docs/api-reference/audio) transcription for voice input.
+- [ActivityKit](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities), [Live Activity design guidance](https://developer.apple.com/design/human-interface-guidelines/live-activities), [WidgetKit animations](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities), and [LiveActivityIntent](https://developer.apple.com/documentation/appintents/liveactivityintent) for the native companion. Back Tap and text input follow Apple's [Shortcut setup](https://support.apple.com/en-ie/guide/shortcuts/apd897693606/ios) and [Ask for Input](https://support.apple.com/guide/shortcuts/use-the-ask-for-input-action-apd68b5c9161/ios) documentation.
+
+Companion checks: `npm run test:companion` compiles/runs seven Swift selection scenarios and checks plugin idempotence, app signing preservation, source membership, extension embedding/dependency, and version inheritance. It requires Xcode command-line tools. These tests do not exercise OpenAI or physical Back Tap.
 
 ## Validation performed
 
@@ -143,12 +170,17 @@ After correcting the build-script quoting on 11 October 2026:
 - `pod install --no-repo-update` refreshed the Constants build phase while leaving Cue's project and entitlements unchanged. Only the RN bundle script invocation was subsequently quoted in the existing Cue project.
 - A complete Debug iPhone build passed with Xcode 26.3 using `xcodebuild -workspace ios/Cue.xcworkspace -scheme Cue -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' -quiet CODE_SIGNING_ALLOWED=NO build`. The resulting app contains an arm64 executable and the expected embedded Constants manifest. This is an unsigned compile/link check, not a signed install or runtime test; non-fatal dependency warnings remain.
 
+After implementing the native companion on 11 October 2026, TypeScript/ESLint checks, both companion checks (including seven compiled Swift selection scenarios), and the four existing iOS path regression tests passed. Unsigned Debug builds compiled and linked the app and embedded widget for iPhone and Simulator. The Simulator bundle has `NSSupportsLiveActivities`, matching app/extension versions, and extracted App Intents metadata.
+
+Simulator UI access was not approved for this chat. No rendered Liquid Glass, automatic deadline transition, background Shortcut execution, Back Tap, real OpenAI response, signed install, or physical-device behavior was verified. No credentials were used for these checks.
+
 ## Known limitations
 
 - The prototype does not yet offer editing, recurring reminders, categories, sync, or sign-in.
 - Local notification behavior depends on the device’s permission and operating-system scheduling policy.
 - Voice transcription needs network access and a valid OpenAI key.
 - The app uses direct API requests only for the hackathon demo; production needs a backend proxy.
+- Live Activity lifetime, refresh timing, and locked-screen interactions remain controlled by iOS. No persistent daemon, automatic expiry renewal, or remote APNs update scheduler is implemented.
 
 ## Hackathon material
 
