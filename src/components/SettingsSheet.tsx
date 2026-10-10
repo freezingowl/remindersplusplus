@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { checkCloudConnection } from "../lib/cloud";
 import { Ionicons } from "@expo/vector-icons";
 import {
   KeyboardAvoidingView,
@@ -32,6 +34,17 @@ export function SettingsSheet({
   companionBusy,
   onToggleCompanion,
 }: SettingsSheetProps) {
+  const [checking, setChecking] = useState(false);
+  const [connection, setConnection] = useState("");
+  async function checkConnection(): Promise<void> {
+    setChecking(true);
+    try {
+      await checkCloudConnection();
+      setConnection("Connected: access token and quota database verified. Try a reminder next.");
+    } catch (error) {
+      setConnection(error instanceof Error ? error.message : "Couldn’t connect. Please try again.");
+    } finally { setChecking(false); }
+  }
   return (
     <Modal animationType="slide" onRequestClose={onClose} transparent visible={visible}>
       <KeyboardAvoidingView
@@ -65,7 +78,7 @@ export function SettingsSheet({
               <Text style={styles.securityText}>One quiet card for this session, up to 8 hours.</Text>
               <Pressable accessibilityRole="button" onPress={() => Alert.alert(
                 "Add Cue to Back Tap",
-                "Open the configured Cue app once first. In Shortcuts, create a shortcut with Ask for Input (Text), then Cue → Add Cue reminder. Pass the input into Reminder. In iPhone Settings → Accessibility → Touch → Back Tap, choose that shortcut for Double Tap or Triple Tap. Try it while unlocked first.",
+                "Install the latest Cue build and check its cloud connection in Settings first. In Shortcuts, create a shortcut with Ask for Input (Text), then Cue → Add Cue reminder. Pass the input into Reminder. In iPhone Settings → Accessibility → Touch → Back Tap, choose that shortcut for Double Tap or Triple Tap. Try it while unlocked first.",
                 [{ text: "Close", style: "cancel" }, { text: "Open Shortcuts", onPress: () => { void Linking.openURL("shortcuts://").catch(() => Alert.alert("Open Shortcuts", "Open the Shortcuts app on your iPhone.")); } }],
               )} style={styles.shortcutButton}>
                 <Text style={styles.shortcutText}>Set up Back Tap</Text>
@@ -75,8 +88,12 @@ export function SettingsSheet({
           ) : null}
 
           <Text style={styles.description}>
-            {cloudConfigured ? "Cloud AI is ready for typed and spoken reminders." : "Cloud AI hasn’t been configured in this build yet."}
+            {cloudConfigured ? "Cloud settings are installed. Check the connection before your first reminder." : "Cloud AI hasn’t been configured in this build yet."}
           </Text>
+          <Pressable accessibilityRole="button" disabled={checking || !cloudConfigured} onPress={() => void checkConnection()} style={styles.shortcutButton}>
+            <Text style={styles.shortcutText}>{checking ? "Checking connection…" : "Check cloud connection"}</Text>
+          </Pressable>
+          {connection ? <Text accessibilityLiveRegion="polite" style={styles.securityText}>{connection}</Text> : null}
           <Text style={styles.securityText}>An internet connection is needed to add reminders.</Text>
         </ScrollView>
       </KeyboardAvoidingView>

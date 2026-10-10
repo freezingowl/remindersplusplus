@@ -32,6 +32,7 @@ import {
   configureCompanionCloud,
   hasCompanion,
   observeCompanion,
+  nativeCloudConfiguration,
   refreshCompanion,
   removeWithCompanion,
   setCompanionEnabled,
@@ -50,7 +51,7 @@ import {
   loadReminders,
   saveReminders,
 } from "./src/lib/storage";
-import { cloudConfig, cloudConfigured, cloudConfigurationError } from "./src/lib/cloud";
+import { cloudConfig, cloudConfigured, cloudConfigurationError, applyNativeCloudConfiguration } from "./src/lib/cloud";
 import type { Reminder, ReminderSource } from "./src/types";
 
 function createId(): string {
@@ -104,6 +105,8 @@ export default function App() {
       try {
         const [storedReminders] = await Promise.all([loadReminders(), clearLegacyAIKey()]);
         await configureCompanionCloud(cloudConfigured ? cloudConfig.url : "", cloudConfigured ? cloudConfig.token : "");
+        const nativeConfig = await nativeCloudConfiguration();
+        if (nativeConfig) applyNativeCloudConfiguration(nativeConfig);
         await refreshCompanion();
         setReminders(storedReminders);
         if (hasCompanion) setIsCompanionActive((await companionStatus()).active);

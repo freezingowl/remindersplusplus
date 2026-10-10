@@ -41,9 +41,17 @@ function json(value, status = 200, extraHeaders = {}) {
   });
 }
 
-function configured(env) {
-  return Boolean(env.CUE_DB?.prepare && env.OPENAI_API_KEY?.trim()
-    && /^[A-Za-z0-9_-]{32,256}$/.test(env.CUE_CLIENT_TOKEN ?? ""));
+function missingConfiguration(env) {
+  const missing = [];
+  if (!env.CUE_DB?.prepare) missing.push("CUE_DB");
+  if (!env.OPENAI_API_KEY?.trim()) missing.push("OPENAI_API_KEY");
+  if (!/^[A-Za-z0-9_-]{32,256}$/.test(env.CUE_CLIENT_TOKEN ?? "")) missing.push("CUE_CLIENT_TOKEN");
+  return missing;
+}
+
+function requireConfiguration(env) {
+  const missing = missingConfiguration(env);
+  if (missing.length) throw new RequestError(503, "not_configured", `Cloudflare setup is missing or invalid: ${missing.join(", ")}. Check the Worker’s bindings and secrets.`);
 }
 
 async function authorized(request, token) {
@@ -266,12 +274,19 @@ export function createWorker({ fetchImpl = (...args) => fetch(...args), now = Da
         }
         let response;
         if (request.method === "GET" && path === "/health") {
-          response = json({ ok: configured(env) }, configured(env) ? 200 : 503);
+          const missing = missingConfiguration(env);
+          response = json(missing.length ? { ok: false, missing } : { ok: true }, missing.length ? 503 : 200);
+        } else if (request.method === "GET" && path === "/v1/status") {
+          requireConfiguration(env);
+          if (!await authorized(request, env.CUE_CLIENT_TOKEN)) throw new RequestError(401, "unauthorized", "Cue’s access token does not match Cloudflare CUE_CLIENT_TOKEN. Copy the app’s token from .env into that Worker secret.");
+          try { await env.CUE_DB.prepare("SELECT route FROM cue_quotas LIMIT 1").first(); }
+          catch { throw new RequestError(503, "quota_unavailable", "The quota table cannot be read. Run worker/schema.sql in the bound D1 database and check the CUE_DB binding."); }
+          response = json({ ok: true, model: MODEL });
         } else {
           const route = path === "/v1/reminders/parse" ? "parse" : path === "/v1/audio/transcribe" ? "transcribe" : null;
           if (!route) throw new RequestError(404, "not_found", "Endpoint not found.");
           if (request.method !== "POST") throw new RequestError(405, "method_not_allowed", "Use POST for this endpoint.");
-          if (!configured(env)) throw new RequestError(503, "not_configured", "Cue’s cloud service is not configured yet.");
+          requireConfiguration(env);
           if (!await authorized(request, env.CUE_CLIENT_TOKEN)) throw new RequestError(401, "unauthorized", "Cue’s cloud access is invalid. Contact the app owner.");
           const input = route === "parse" ? await parseInput(request) : await audioInput(request);
           const timestamp = now();

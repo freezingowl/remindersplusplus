@@ -8,7 +8,7 @@ Complete this file during the hackathon and use it to prepare your submission th
 - **Short description:** Cue is a voice-friendly personal reminder app that turns natural language into calm, actionable reminder cards and local notifications.
 - **Code repository URL:** To be added by the participant before submission.
 - **Final submitted implementation commit SHA:** Pending final participant commit.
-- **Working demo URL or local demo steps:** Deploy/configure the Worker following [worker/README.md](worker/README.md), then run `npm install`, `npm run ios:sync:companion` for an existing native checkout, `npm run ios:build:device`, and `npm run start:dev:tunnel`; see the Demo flow in [README.md](README.md).
+- **Working demo URL or local demo steps:** Follow [TESTING.md](TESTING.md): deploy/configure the Worker, run `npm run cloud:check` and the parser check, sync native settings, then install a standalone Release app and verify in-app capture before Back Tap.
 - **Demo access requirements:** A configured Cloudflare Worker/D1 database with its OpenAI secret, plus the Worker URL and separate Cue access token in the app environment. Use a custom iOS 17+ build for Live Activities/Shortcuts; Expo Go supports the ordinary UI. Do not include secrets in the submission.
 
 ## Participants
@@ -24,10 +24,10 @@ Participate solo or in a team of up to 4. Remove unused rows.
 - **Prerequisites and versions:** Node.js 24.3+ recommended, npm, and Expo Go or a simulator/device.
 - **Install command:** `npm install`
 - **Required environment variable names:** `EXPO_PUBLIC_CUE_WORKER_URL` and `EXPO_PUBLIC_CUE_CLIENT_TOKEN` in Cue; `OPENAI_API_KEY` and `CUE_CLIENT_TOKEN` as Worker secrets, with D1 binding `CUE_DB`. See `.env.example` and the Worker guide.
-- **Start command:** `npm run ios:build:device` for the first wired iPhone development-build install, then `npm run start:dev:tunnel` for subsequent sessions. Use `npm run ios:simulator` for Expo Go on the simulator.
+- **Start command:** `npm run ios:sync:companion`, then `npm run ios:build:standalone` for a wired iPhone Release install; no Metro/tunnel is needed. Use `npm run ios:simulator` for Expo Go on the simulator.
 - **Demo walkthrough:** Add a natural-language typed reminder, complete it by tapping its card, then demonstrate spoken capture and the configured Back Tap Shortcut/Live Activity.
-- **Checks performed and results:** Typecheck/lint, ten offline Worker scenarios, two companion checks (seven Swift selection cases), four iOS path checks and an unsigned iPhone app/widget build passed; exact commands are in [README.md](README.md).
-- **Known limitations or incomplete features:** No editing, recurrence, sync, user sign-in or APNs update scheduler. The backend uses a private-demo token/global limits and is not deployed yet. Real AI calls and physical-device behavior still need testing; iOS limits Live Activities to eight active hours.
+- **Checks performed and results:** Typecheck/lint, twelve offline Worker scenarios, three companion checks (seven selection/six configuration cases), four iOS path checks and an unsigned Release iPhone app/widget build passed; bundled JavaScript/native cloud settings were verified. Live preflight stopped at incomplete Worker setup; see [TESTING.md](TESTING.md).
+- **Known limitations or incomplete features:** No editing, recurrence, sync, user sign-in or APNs update scheduler. The deployed backend uses a private-demo token/global limits; its bindings/secrets remain incomplete at the last live check. Real AI calls and physical-device behavior still need testing; iOS limits Live Activities to eight active hours.
 - **Libraries, APIs, and public datasets used:** Expo Audio, Notifications, SecureStore, AsyncStorage, and Cloudflare Workers/D1, and OpenAI Responses (GPT-6 Luna) / Audio APIs; links and usage are listed in [README.md](README.md).
 - **AI usage record:** [AI_USAGE.md](AI_USAGE.md)
 - **Development change log:** [CHANGELOG.md](CHANGELOG.md)

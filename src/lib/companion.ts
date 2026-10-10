@@ -8,6 +8,7 @@ type CompanionModule = {
   getReminders(): Promise<string | null>;
   seedReminders(json: string): Promise<string>;
   configureCloud(url: string, token: string): Promise<void>;
+  getCloudConfiguration(): Promise<{ url: string; token: string } | null>;
   getStatus(): Promise<CompanionStatus>;
   setEnabled(enabled: boolean): Promise<CompanionStatus>;
   capture(text: string, source: ReminderSource): Promise<string>;
@@ -43,6 +44,12 @@ export async function seedNativeReminders(reminders: Reminder[]): Promise<Remind
 
 export async function configureCompanionCloud(url: string, token: string): Promise<void> {
   if (native) await native.configureCloud(url, token);
+}
+
+export async function nativeCloudConfiguration(): Promise<{ url: string; token: string } | null> {
+  if (!native) return null;
+  if (typeof native.getCloudConfiguration !== "function") throw new Error("This installed Cue app is older than its JavaScript. Rebuild and install Cue, then try again.");
+  return native.getCloudConfiguration();
 }
 
 export async function companionStatus(): Promise<CompanionStatus> {

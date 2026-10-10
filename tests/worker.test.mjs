@@ -237,3 +237,34 @@ test("health makes no AI call; CORS permits only the configured origin; routes/m
   assert.equal(get.status, 405);
   assert.equal(get.headers.get("Allow"), "POST");
 });
+
+test("connection diagnostics name missing settings and verify token/schema without paid calls or quota", async (t) => {
+  const f = fixture(t);
+  const health = await f.worker.fetch(new Request("https://cue.example/health"), {});
+  assert.equal(health.status, 503);
+  assert.deepEqual((await health.json()).missing, ["CUE_DB", "OPENAI_API_KEY", "CUE_CLIENT_TOKEN"]);
+  const statusRequest = () => new Request("https://cue.example/v1/status", { headers: { Authorization: `Bearer ${TOKEN}` } });
+  const ready = await f.worker.fetch(statusRequest(), f.env);
+  assert.deepEqual(await ready.json(), { ok: true, model: "gpt-6-luna" });
+  assert.equal((await f.worker.fetch(new Request("https://cue.example/v1/status"), f.env)).status, 401);
+  const badSchema = { prepare() { return { async first() { throw new Error("private schema details"); } }; } };
+  assert.equal(await code(await f.worker.fetch(statusRequest(), { ...f.env, CUE_DB: badSchema })), "quota_unavailable");
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.db.row(), undefined);
+});
+
+test("sushi preflight makes no paid request when readiness fails and validates the relative deadline on success", async () => {
+  const { checkCloud } = await import("../scripts/checkCloud.cjs");
+  const calls = [];
+  await assert.rejects(checkCloud({ origin: "https://cue.example", token: TOKEN, parse: true, fetchImpl: async (url) => {
+    calls.push(url);
+    return Response.json({ error: { message: "Missing CUE_DB" } }, { status: 503 });
+  } }), /Missing CUE_DB/);
+  assert.equal(calls.length, 1);
+  const result = await checkCloud({ origin: "https://cue.example", token: TOKEN, parse: true, fetchImpl: async (url, options) => {
+    if (url.endsWith("/v1/status")) return Response.json({ ok: true });
+    assert.equal(JSON.parse(options.body).text, "Remind me to make sushi in 2 minutes");
+    return Response.json({ reminder: { title: "Make sushi", dueAt: new Date(Date.now() + 120_000).toISOString() } });
+  } });
+  assert.equal(result.title, "Make sushi");
+});

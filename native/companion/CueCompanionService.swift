@@ -116,7 +116,7 @@ actor CueCompanionService {
         try? await publish(state, startIfNeeded: startIfNeeded)
     }
 
-    func capture(_ input: String, source: String) async throws -> String {
+    func capture(_ input: String, source: String) async throws -> CueCaptureResult {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty && text.count <= 2000 else {
             throw CueCompanionError.message("Enter one reminder, up to 2,000 characters.")
@@ -164,7 +164,7 @@ actor CueCompanionService {
             // Await the acknowledgement within the user-triggered execution. No background timer.
             try? await Task.sleep(nanoseconds: 1_300_000_000)
             if revision == feedbackRevision { try? await restore() }
-            return try json(load())
+            return CueCaptureResult(reminder: reminder, remindersJSON: try json(load()))
         } catch {
             revision += 1
             let feedbackRevision = revision
@@ -227,19 +227,28 @@ actor CueCompanionService {
         return id
     }
 
-    // Persisted configuration lets an App Intent call the Worker without Metro/JS.
-    func configureCloud(_ origin: String, token: String) throws {
-        if !origin.isEmpty {
-            guard let url = URLComponents(string: origin), url.scheme == "https", url.host != nil,
-                  url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
-                  (url.path.isEmpty || url.path == "/"),
-                  token.range(of: "^[A-Za-z0-9_-]{32,256}$", options: .regularExpression) != nil else {
-                throw CueCompanionError.message("Cue’s cloud configuration is invalid. Contact the app owner.")
-            }
+    // Native build settings make Shortcuts independent of JS hydration/Metro.
+    func cloudConfiguration() throws -> [String: String]? {
+        let bundledOrigin = Bundle.main.object(forInfoDictionaryKey: "CueCloudOrigin") as? String ?? ""
+        let bundledToken = Bundle.main.object(forInfoDictionaryKey: "CueCloudAccessToken") as? String ?? ""
+        if let bundled = CueCloudSettings(origin: bundledOrigin, token: bundledToken) {
+            return ["url": bundled.origin, "token": bundled.token]
         }
+        let savedOrigin = UserDefaults.standard.string(forKey: "cue.cloud.origin") ?? ""
+        guard !savedOrigin.isEmpty,
+              let saved = CueCloudSettings(origin: savedOrigin, token: try CueCompanionKeychain.read()) else { return nil }
+        return ["url": saved.origin, "token": saved.token]
+    }
+
+    func configureCloud(_ origin: String, token: String) throws {
         try CueCompanionKeychain.removeLegacyKey()
-        try CueCompanionKeychain.save(origin.isEmpty ? "" : token)
-        UserDefaults.standard.set(origin.trimmingCharacters(in: CharacterSet(charactersIn: "/")), forKey: "cue.cloud.origin")
+        // A development reload missing .env must not erase a working installation.
+        if origin.isEmpty && token.isEmpty { return }
+        guard let settings = CueCloudSettings(origin: origin, token: token) else {
+            throw CueCompanionError.message("Cue’s cloud configuration is invalid. Rebuild Cue with its Worker URL and access token.")
+        }
+        try CueCompanionKeychain.save(settings.token)
+        UserDefaults.standard.set(settings.origin, forKey: "cue.cloud.origin")
     }
 
     private struct Parsed: Decodable { var title: String; var note: String; var dueAt: String }
@@ -250,10 +259,10 @@ actor CueCompanionService {
     }
 
     private func parse(_ text: String) async throws -> Parsed {
-        let origin = UserDefaults.standard.string(forKey: "cue.cloud.origin") ?? ""
-        let token = try CueCompanionKeychain.read()
-        guard !origin.isEmpty, !token.isEmpty, let url = URL(string: "\(origin)/v1/reminders/parse") else {
-            throw CueCompanionError.message("Cloud AI isn’t configured. Open the configured Cue app once, then try again.")
+        guard let settings = try cloudConfiguration(),
+              let origin = settings["url"], let token = settings["token"],
+              let url = URL(string: "\(origin)/v1/reminders/parse") else {
+            throw CueCompanionError.message("This Cue build has no cloud settings. On your Mac, run ios:sync:companion and rebuild/install Cue. Opening the app alone won’t fix this build.")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"

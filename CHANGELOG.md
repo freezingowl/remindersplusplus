@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T02:36:53+05:30 — Fix Shortcut cloud bootstrap and document an ordered phone test
+
+- Changed: Native sync/prebuild now validates and embeds the Worker origin and separate Cue access token in the app Info.plist. The native service prefers those installed settings and an empty JavaScript configuration no longer erases saved settings; JavaScript hydrates from native settings for consistent text/voice calls. Shortcut receipts name the saved reminder and time. Added authenticated Worker status/schema diagnostics, missing-setting health responses, an in-app connection check, a backend preflight with the exact two-minute sushi prompt, and a standalone Release build command. Added TESTING.md and updated setup/submission docs.
+- Why: The user's screenshot showed the Shortcut failing before reaching the Worker because its native cloud configuration was absent. Opening an unconfigured/older build alone cannot fix that. A separate incomplete Worker deployment also blocks capture; readiness must pass before trying the phone.
+- Validation: Twelve offline Worker tests, three companion tests (seven Swift selection and six configuration cases), four iOS path checks, typecheck/lint and an unsigned Release iPhone app/widget build passed. Verified nonempty bundled JavaScript, matching installed Worker origin/token, Live Activities support, embedded widget and App Intents metadata without exposing secrets. Local documentation links passed. Live preflight still stopped at incomplete Worker setup before any paid AI request.
+- Limitations: The deployed Worker needs its bindings/secrets completed and the current JavaScript deployed for diagnostics. Live OpenAI output/latency, signed installation, physical Back Tap and actual notifications remain unverified. Existing reminders/signing settings were preserved. Found and stopped remaining Cue Metro/ngrok processes as the user had requested; port 8081 was then clear. No server/tunnel or installation was started during this fix. The unsigned build is verification only; the user handles installation.
+
 ## 2026-10-11T02:12:06+05:30 — Configure the deployed Worker and start the companion on first capture
 
 - Changed: Created ignored local `.env` with the user-provided Worker origin and a separate generated Cue access token (secret value omitted from logs/commits). Native capture now starts the first Live Activity automatically for in-app additions as well as Shortcuts, preserves an explicit in-app opt-out, and starts a new enabled session after expiry on a later capture. Synced native sources without changing signing settings; clarified setup/lifetime behavior in README and the Worker guide.

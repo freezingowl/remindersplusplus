@@ -20,3 +20,13 @@ expect(selected([task("completed", minutes: -5, completed: true), task("next", m
 expect(CueSelection.nextDue([task("untimed", minutes: nil), task("late", minutes: 30), task("first", minutes: 5), task("done", minutes: 1, completed: true)], now: now)?.id == "first", "Only the earliest future incomplete task is preloaded")
 expect(CueDates.parse("2026-10-11T10:00:00.000+05:30") == CueDates.parse("2026-10-11T04:30:00Z"), "Fractional ISO dates and timezone offsets represent the same instant")
 print("7 selection scenarios passed")
+
+let token = "demo-client-token-at-least-32-characters"
+let installed = CueCloudSettings(origin: "https://cue.example/", token: token)
+expect(installed?.origin == "https://cue.example", "Bundled settings work with no saved preferences or JS hydration")
+expect(installed?.token == token, "Keep the configured token paired with its origin")
+expect(CueCloudSettings(origin: "", token: "") == nil, "Missing build settings are rejected")
+expect(CueCloudSettings(origin: "http://cue.example", token: token) == nil, "Use HTTPS for native requests")
+expect(CueCloudSettings(origin: "https://cue.example/path", token: token) == nil, "Only a Worker origin is accepted")
+expect(CueCloudSettings(origin: "https://user@cue.example", token: token) == nil, "Reject credentials in the Worker URL")
+print("6 cloud configuration scenarios passed")

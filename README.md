@@ -17,6 +17,8 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 
 ## Run the app
 
+For a phone test without Metro or a tunnel, follow [TESTING.md](TESTING.md): verify the Worker, sync native configuration, install a standalone Release build, then test in-app capture before Back Tap. This is the recommended path for checking the reported two-minute sushi reminder failure.
+
 ### Prerequisites
 
 - Node.js 24.3 or newer is recommended by the installed React Native version. The project bundled successfully with Node 24.2.0, but npm reports an engine warning on that version.
@@ -34,7 +36,7 @@ npm install
 npm run ios:build:device
 ```
 
-Choose the wired iPhone when Expo asks. The first build can take a few minutes because it generates the native iOS project, installs pods, signs the app for development, and installs Cue. You only need to rebuild when native dependencies or `app.json` changes.
+Choose the wired iPhone when Expo asks. The first build can take a few minutes because it generates the native iOS project, installs pods, signs the app for development, and installs Cue. Rebuild when native sources, dependencies, `app.json`, or the Worker URL/Cue access token change.
 
 For an existing `ios/` checkout, run `npm run ios:sync:companion` before rebuilding. This copies the tracked Swift sources into the native project, adds the extension, and preserves the app's development team. For a fresh checkout, the registered config plugin does this during prebuild. Use `ios/Cue.xcworkspace` in Xcode and ensure **CueCompanion** has an appropriate development provisioning profile as well as **Cue**. A JavaScript reload cannot install this extension.
 
@@ -88,6 +90,8 @@ npm run ios
 npm run ios:simulator
 npm run ios:device
 npm run ios:build:device
+npm run ios:build:standalone
+npm run cloud:check
 npm run start:dev:tunnel
 npm run android
 ```
@@ -96,11 +100,11 @@ npm run android
 
 Follow [worker/README.md](worker/README.md) to deploy the standalone [Worker JavaScript](worker/worker.mjs), initialize [the D1 quota table](worker/schema.sql), and add `OPENAI_API_KEY` and `CUE_CLIENT_TOKEN` as Cloudflare **Secrets**. No OpenAI key belongs in Cue, its environment, or the Shortcut.
 
-Copy `.env.example` to `.env` if needed and set `EXPO_PUBLIC_CUE_WORKER_URL` to the Worker's HTTPS origin and `EXPO_PUBLIC_CUE_CLIENT_TOKEN` to the separate Cue token. Remove the obsolete `EXPO_PUBLIC_OPENAI_API_KEY` setting. Restart Metro after environment changes; launch the rebuilt app once to persist this configuration for Shortcuts. Existing reminders are preserved, and old device-stored OpenAI keys are removed.
+Copy `.env.example` to `.env` if needed and set `EXPO_PUBLIC_CUE_WORKER_URL` to the Worker's HTTPS origin and `EXPO_PUBLIC_CUE_CLIENT_TOKEN` to the separate Cue token. Remove the obsolete `EXPO_PUBLIC_OPENAI_API_KEY` setting. Run `npm run cloud:check` to verify the deployed token and D1 table; `npm run cloud:check -- --parse` then tests the exact sushi sentence through OpenAI once. Run `npm run ios:sync:companion` and rebuild/install whenever the cloud environment changes. Native sync/prebuild embeds these two Cue settings in the app, so Shortcuts no longer depend on JavaScript saving them on first launch. A standalone Release build bundles the screen and needs no Metro or tunnel. Existing reminders are preserved, and old device-stored OpenAI keys are removed.
 
 AI capture is cloud-only. Missing configuration, offline/network failures, and rate limits show an error instead of silently saving unparsed text. The demo uses `gpt-6-luna` with reasoning disabled for focused, low-cost extraction; voice uses `gpt-4o-mini-transcribe`. Limits are global: 10 text requests/minute and 500/UTC day, plus 2 voice requests/minute and 50/UTC day. See the Worker guide for the security scope, tests and tuning. The app access token is shipped to the client and is suitable for a private demo; public distribution needs real user authentication.
 
-For the participant’s configured local checkout, `.env` now contains the supplied Worker origin and a generated Cue access token. Set the matching token as the Worker’s `CUE_CLIENT_TOKEN` secret. At the latest check, `/health` returned `ok:false`; cloud binding/secrets still need completing before AI capture will succeed. The latest automatic-first-capture sources passed an unsigned iPhone build and companion/typecheck/lint checks. A signed CLI attempt failed at widget signing (`errSecInternalComponent`); complete installation through Xcode with access to the signing certificate for both targets. The Expo tunnel timed out twice; the development server is currently running over LAN, so use the same Wi-Fi network.
+For the participant’s configured local checkout, `.env` contains the supplied Worker origin and a generated Cue access token. Set that exact token as the Worker’s `CUE_CLIENT_TOKEN` secret. The live preflight still found `/health` returning HTTP 503 with `ok:false`, so binding/secrets need completing before AI capture will succeed. Deploy the updated Worker for specific diagnostics. The corrected native bootstrap passed an unsigned Release iPhone app/widget build; its bundled screen and cloud settings were verified. A prior signed CLI attempt failed at widget signing (`errSecInternalComponent`); resolve signing in Xcode for both targets if necessary. Tunnels, Metro and installation were stopped at the user's request; none were restarted during this fix.
 
 ## Demo flow
 
@@ -112,7 +116,7 @@ For the participant’s configured local checkout, `.env` now contains the suppl
 
 ## Lock Screen companion and Back Tap
 
-1. Rebuild and install the custom iPhone app. Configure the cloud environment and launch it once. The first in-app capture starts **Lock Screen companion** automatically; you can also start it from Settings. Allow Live Activities and notifications when prompted. An explicit off setting is respected for in-app captures.
+1. Complete [TESTING.md](TESTING.md) through the in-app capture check: verify the Worker, sync the cloud environment and install the custom iPhone app. Open it to check the connection and grant permissions. The first in-app capture starts **Lock Screen companion** automatically; you can also start it from Settings. Allow Live Activities and notifications when prompted. An explicit off setting is respected for in-app captures.
 2. In Apple's **Shortcuts** app, create a shortcut with **Ask for Input**, using input type **Text**. Add **Cue → Add Cue reminder** and pass the provided input into its **Reminder** parameter. Save it as “Add to Cue.”
 3. In iPhone **Settings → Accessibility → Touch → Back Tap**, assign that shortcut to Double Tap or Triple Tap. Start testing with the phone unlocked; the input sheet and authentication behavior while locked need physical-device verification.
 4. Back Tap and enter a clear sentence such as `Remind me to call Mum tomorrow at 8 PM`. The native action sends it to the Worker, saves its title and optional timezone-aware due date into Cue's store, and schedules a local notification if permitted.
@@ -125,7 +129,7 @@ Timing has two separate mechanisms. The OS schedules the actual notification. Th
 
 An active Live Activity lasts **at most eight hours**, and people can dismiss it. Ended content can remain on the Lock Screen for up to four additional hours. Updating the same activity does not renew that limit. Start a new session from Settings or a later capture after it ends (provided the companion is enabled). There is no automatic 24/7 renewal.
 
-The Shortcut needs the persisted Worker configuration and network access. The Worker handles AI calls and quotas; it does not provide an offline model, reminder sync or APNs scheduling. Ambiguous or missing times remain **No time set** rather than being invented; a parsed time in the past is rejected. Alerts denied by iOS do not prevent saving, and the acknowledgement reports when alerts are unavailable. Completing or deleting a reminder cancels its pending/delivered notification.
+The Shortcut needs cloud settings in its installed native build and network access. The Worker handles AI calls and quotas; it does not provide an offline model, reminder sync or APNs scheduling. Ambiguous or missing times remain **No time set** rather than being invented; a parsed time in the past is rejected. Alerts denied by iOS do not prevent saving, and the acknowledgement reports when alerts are unavailable. Completing or deleting a reminder cancels its pending/delivered notification.
 
 ## Architecture and integrations
 
@@ -137,9 +141,9 @@ The app deliberately stays small:
 - `worker/worker.mjs` calls OpenAI Responses with a strict JSON schema and the transcription endpoint, authenticates the demo client token, bounds inputs and atomically enforces global quotas using D1.
 - `src/lib/storage.ts` uses AsyncStorage in Expo Go/Android and migrates its existing reminders once into the native store in custom iPhone builds. Native mutations are authoritative, so a stale UI snapshot cannot overwrite a Shortcut capture.
 - `src/lib/companion.ts` connects the app to the native service and observes shared reminder changes. Native reminder JSON lives in the app's Application Support directory; the Live Activity only receives a small display snapshot.
-- `native/companion/` contains the Swift actor, native cloud configuration storage, ActivityKit attributes, SwiftUI widget, and App Intents. Native Shortcuts run without requiring the React Native screen to be open. Both app and Shortcut mutation paths use this service in a custom iPhone build.
+- `native/companion/` contains the Swift actor, native cloud configuration lookup, ActivityKit attributes, SwiftUI widget, and App Intents. Native Shortcuts read the installed app's cloud settings without requiring the React Native screen to be open. Both app and Shortcut mutation paths use this service in a custom iPhone build; success receipts name the saved task and time.
 - `plugins/withCueCompanion.cjs` adds the app source membership, embedded widget target, and minimum iOS version during prebuild. `scripts/syncCompanion.cjs` applies it to an existing project without regenerating it.
-- `src/lib/notifications.ts` schedules notifications in Expo Go/Android; the native service uses UserNotifications in custom iPhone builds. The Worker URL is stored in native preferences and the Cue access token in a native Keychain item so an App Intent can use them without the JS runtime.
+- `src/lib/notifications.ts` schedules notifications in Expo Go/Android; the native service uses UserNotifications in custom iPhone builds. Native cloud settings come from the app's Info.plist, with legacy preferences/Keychain storage as a fallback. Installed settings also hydrate JavaScript so text/voice and Shortcuts use the same Worker. Only the separate, extractable Cue demo token is embedded; the OpenAI key stays in Cloudflare.
 
 Libraries and services:
 
@@ -149,7 +153,7 @@ Libraries and services:
 - [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) for [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) extraction, and [OpenAI transcription](https://developers.openai.com/api/docs/guides/speech-to-text) for voice input, called exclusively from [Cloudflare Workers](https://developers.cloudflare.com/workers/) with [D1](https://developers.cloudflare.com/d1/) quotas.
 - [ActivityKit](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities), [Live Activity design guidance](https://developer.apple.com/design/human-interface-guidelines/live-activities), [WidgetKit animations](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities), and [LiveActivityIntent](https://developer.apple.com/documentation/appintents/liveactivityintent) for the native companion. Back Tap and text input follow Apple's [Shortcut setup](https://support.apple.com/en-ie/guide/shortcuts/apd897693606/ios) and [Ask for Input](https://support.apple.com/guide/shortcuts/use-the-ask-for-input-action-apd68b5c9161/ios) documentation.
 
-Companion checks: `npm run test:companion` compiles/runs seven Swift selection scenarios and checks plugin idempotence, app signing preservation, source membership, extension embedding/dependency, and version inheritance. It requires Xcode command-line tools. These tests do not exercise OpenAI or physical Back Tap. `npm run test:worker` adds ten offline backend scenarios using actual SQLite quota statements and mocked OpenAI responses.
+Companion checks: `npm run test:companion` compiles/runs seven Swift selection scenarios plus six configuration cases, and checks plugin idempotence, app signing preservation, source membership, extension embedding/dependency, version inheritance, and native cloud embedding validation. It requires Xcode command-line tools. These tests do not exercise OpenAI or physical Back Tap. `npm run test:worker` adds twelve offline backend scenarios using actual SQLite quota statements and mocked OpenAI responses.
 
 ## Validation performed
 
@@ -175,7 +179,9 @@ After implementing the native companion on 11 October 2026, TypeScript/ESLint ch
 
 After moving AI calls to Cloudflare on 11 October 2026, all ten offline Worker scenarios, TypeScript/ESLint checks, both companion checks, and the four path tests passed. The complete unsigned Debug iPhone app/widget compiled successfully after synchronizing the native cloud bridge. Worker deployment, live OpenAI results/latency and physical Back Tap remain for the participant to test; [the Worker guide](worker/README.md) gives the exact deployment and two-minute reminder test.
 
-Simulator UI access was not approved for this chat. No rendered Liquid Glass, automatic deadline transition, background Shortcut execution, Back Tap, real OpenAI response, signed install, or physical-device behavior was verified. No credentials were used for these checks.
+After fixing the native configuration failure on 11 October 2026, all twelve Worker tests, three companion tests (including seven selection/six configuration cases), four iOS path checks, typecheck and lint passed. The complete unsigned Release iPhone app/widget build passed. Its nonempty `main.jsbundle`, matching native Worker origin/token, Live Activities support, embedded extension and App Intents metadata were verified without exposing tokens. Live preflight stopped at incomplete Worker setup before making a paid call. See [TESTING.md](TESTING.md) for the gated end-to-end procedure.
+
+Simulator UI access was not approved for this chat. No rendered Liquid Glass, automatic deadline transition, background Shortcut execution, Back Tap, real OpenAI response, signed install, or physical-device behavior was verified. No OpenAI key or paid request was used for these checks.
 
 ## Known limitations
 

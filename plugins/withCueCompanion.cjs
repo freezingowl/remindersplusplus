@@ -80,9 +80,35 @@ function copySources(projectRoot, iosRoot) {
   }
 }
 
+function applyCloudConfiguration(info, env = process.env) {
+  const origin = (env.EXPO_PUBLIC_CUE_WORKER_URL ?? "").trim().replace(/\/+$/, "");
+  const token = (env.EXPO_PUBLIC_CUE_CLIENT_TOKEN ?? "").trim();
+  delete info.CueCloudOrigin;
+  delete info.CueCloudAccessToken;
+  if (!origin && !token) return info;
+  let validOrigin = false;
+  try {
+    const url = new URL(origin);
+    validOrigin = url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && url.pathname === "/";
+  } catch { /* Report configuration without including either value. */ }
+  if (!validOrigin || !/^[A-Za-z0-9_-]{32,256}$/.test(token) || /^sk[-_]/.test(token)) {
+    throw new Error("Set a valid EXPO_PUBLIC_CUE_WORKER_URL and separate EXPO_PUBLIC_CUE_CLIENT_TOKEN before building Cue. Do not use an OpenAI key as the Cue token.");
+  }
+  info.CueCloudOrigin = origin;
+  info.CueCloudAccessToken = token;
+  return info;
+}
+
+function cloudEnvironment(projectRoot) {
+  // Expo's parser supports quoted values and .env.local without printing values.
+  const fileEnv = require("@expo/env").get(projectRoot, { silent: true, force: true }).env;
+  return { ...fileEnv, ...process.env };
+}
+
 function withCueCompanion(config) {
   config = withInfoPlist(config, (mod) => {
     mod.modResults.NSSupportsLiveActivities = true;
+    applyCloudConfiguration(mod.modResults, cloudEnvironment(mod.modRequest.projectRoot));
     return mod;
   });
   config = withPodfileProperties(config, (mod) => {
@@ -102,3 +128,6 @@ function withCueCompanion(config) {
 module.exports = withCueCompanion;
 module.exports.configureProject = configureProject;
 module.exports.copySources = copySources;
+
+module.exports.applyCloudConfiguration = applyCloudConfiguration;
+module.exports.cloudEnvironment = cloudEnvironment;

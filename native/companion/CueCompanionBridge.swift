@@ -35,6 +35,9 @@ class CueCompanion: RCTEventEmitter {
     @objc func configureCloud(_ url: String, token: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { try await CueCompanionService.shared.configureCloud(url, token: token); return NSNull() }
     }
+    @objc func getCloudConfiguration(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        perform(resolve, reject) { try await CueCompanionService.shared.cloudConfiguration() as Any? ?? NSNull() }
+    }
     @objc func getStatus(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { await CueCompanionService.shared.status() }
     }
@@ -42,7 +45,7 @@ class CueCompanion: RCTEventEmitter {
         perform(resolve, reject) { try await CueCompanionService.shared.setEnabled(enabled) }
     }
     @objc func capture(_ text: String, source: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-        perform(resolve, reject) { try await CueCompanionService.shared.capture(text, source: source) }
+        perform(resolve, reject) { try await CueCompanionService.shared.capture(text, source: source).remindersJSON }
     }
     @objc func toggle(_ id: String, completed: Bool, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { try await CueCompanionService.shared.toggle(id, completed: completed) }

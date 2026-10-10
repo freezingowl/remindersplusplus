@@ -64,3 +64,25 @@ enum CueCompanionError: LocalizedError {
         switch self { case .message(let message): return message }
     }
 }
+
+struct CueCloudSettings: Sendable {
+    let origin: String
+    let token: String
+
+    init?(origin: String, token: String) {
+        let origin = origin.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URLComponents(string: origin), url.scheme == "https", url.host != nil,
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              (url.path.isEmpty || url.path == "/"),
+              token.range(of: "^[A-Za-z0-9_-]{32,256}$", options: .regularExpression) != nil else { return nil }
+        self.origin = origin.hasSuffix("/") ? String(origin.dropLast()) : origin
+        self.token = token
+    }
+
+}
+
+struct CueCaptureResult: Sendable {
+    let reminder: CueReminder
+    let remindersJSON: String
+}

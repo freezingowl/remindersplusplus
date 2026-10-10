@@ -9,9 +9,14 @@ struct AddCueReminderIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         #if !CUE_WIDGET_EXTENSION
-        _ = try await CueCompanionService.shared.capture(text, source: "shortcut")
+        let result = try await CueCompanionService.shared.capture(text, source: "shortcut")
+        let reminder = result.reminder
+        let time = reminder.dueDate.map(CueDates.label) ?? "No time set"
+        let alerts = reminder.dueAt != nil && reminder.notificationId == nil ? " Alerts are off; allow Cue notifications." : ""
+        return .result(dialog: "Added \(reminder.title). \(time).\(alerts)")
+        #else
+        return .result(dialog: "Open Cue to add this reminder.")
         #endif
-        return .result(dialog: "Added to Cue.")
     }
 }
 

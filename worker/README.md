@@ -11,7 +11,7 @@ Cue's app and native iOS Shortcut call this Worker. Only the Worker calls OpenAI
    - `OPENAI_API_KEY`: your OpenAI API key. Keep it here only; do not paste it into JavaScript or the app.
    - `CUE_CLIENT_TOKEN`: a separate random access token, 32–256 characters using letters, digits, `_` or `-`. Generate one locally with `openssl rand -hex 32`. Keep the generated value for the app configuration below. This is an app access token, not your OpenAI key.
 5. Deploy the saved code/binding/secrets. Keep the Worker's HTTPS URL, for example `https://cue-ai.YOUR-SUBDOMAIN.workers.dev`.
-6. Visit `https://YOUR-WORKER.workers.dev/health`. Expect `{"ok":true}`. This checks that the required bindings/secrets are present; it does not call OpenAI or verify the SQL schema. The in-app test below verifies the complete deployed path.
+6. Visit `https://YOUR-WORKER.workers.dev/health`. Expect `{"ok":true}`. On failure, the updated Worker names missing/invalid bindings or secrets without returning their values. This checks presence only; the authenticated check below verifies the token and D1 table without calling OpenAI.
 
 Cloudflare's official [D1 setup](https://developers.cloudflare.com/d1/get-started/) and [Secrets instructions](https://developers.cloudflare.com/workers/configuration/secrets/) cover these dashboard steps.
 
@@ -26,15 +26,25 @@ EXPO_PUBLIC_CUE_CLIENT_TOKEN=THE_SAME_RANDOM_CUE_CLIENT_TOKEN
 
 Use only the HTTPS origin: no path, query, or fragment. Remove the obsolete `EXPO_PUBLIC_OPENAI_API_KEY` setting. Never put `OPENAI_API_KEY` in the app's environment. Both `EXPO_PUBLIC_` values above are included in the app bundle, so the access token can be extracted by someone with the app. It blocks anonymous use of the endpoint for this private demo; it does **not** establish a user's identity. Public distribution needs real user authentication/device verification and per-user quotas. The global quotas below still constrain paid calls if this demo token is copied.
 
-Restart Metro after changing environment variables. For the first build with this native cloud change:
+Follow [the ordered testing guide](../TESTING.md) before testing on the phone. From the app directory, check the deployment first:
+
+```bash
+npm run cloud:check
+npm run cloud:check -- --parse
+```
+
+The first command checks authentication and reads the D1 quota table without consuming AI quota. The second makes one paid request with **“Remind me to make sushi in 2 minutes”**, validates that its due time is about two minutes ahead, and reports latency. It creates no reminder on the phone. Resolve any failure before continuing.
+
+For a standalone iPhone test:
 
 ```bash
 npm run ios:sync:companion
-npm run ios:build:device
-npm run start:dev:tunnel
+npm run ios:build:standalone
 ```
 
-Launch the rebuilt Cue app once and let it finish loading. It saves the Worker URL and Cue access token for its native App Intent, so later Shortcut runs do not require the React Native screen or Metro to be open. A development build still needs Metro when opening its React Native screen; a standalone release bundles that screen. Changing cloud configuration later requires restarting Metro/reloading Cue, or rebuilding a release, and opening Cue once again. Previously saved personal OpenAI keys are deleted during setup and never used by the new code.
+Native sync/prebuild embeds the Worker origin and separate Cue access token in the app's Info.plist. Shortcuts can read them without JavaScript having launched first; the OpenAI key is never embedded. Re-run native sync and rebuild/install whenever either value changes. Opening an older binary or reloading JavaScript cannot add these native settings.
+
+The Release command bundles the React Native screen and needs no Metro server or tunnel. Open the installed app to check its cloud connection and allow notifications before your first Shortcut test. A Debug development build still needs Metro for its React Native screen. Previously saved personal OpenAI keys are deleted during setup and never used by this code.
 
 ## Add the Back Tap Shortcut
 
@@ -64,6 +74,7 @@ No reminder text, audio, raw IP addresses, API keys or tokens are stored in D1 o
 
 ## Test the deployment
 
+- Start with the readiness check and sushi parser test above, then follow [TESTING.md](../TESTING.md) for installation, permission checks, in-app capture and Back Tap in that order. **Check cloud connection** in Cue Settings uses authenticated `GET /v1/status`; it checks configuration/token/schema, not OpenAI key validity or model access.
 - In Cue, submit **“Remind me to drink water in two minutes.”** Check the card's time and allow notifications. Lock the phone and wait for the local notification.
 - Run **Add to Cue** while unlocked with another clear task/time. Check **Adding reminder… → Added… → original due/upcoming task** on the Live Activity. Reopen Cue and check the new reminder is in the list.
 - Try one microphone reminder. Check transcription and the resulting date/time. This uses one voice request and one text request.
@@ -81,7 +92,7 @@ npm run test:companion
 npm run test:ios:paths
 ```
 
-Worker tests use Node 24's experimental built-in SQLite to execute the actual quota SQL; OpenAI HTTP responses are mocked. They verify simultaneous requests across separate handler instances, minute/daily resets, fail-closed storage, validation, bounded uploads, output/date/refusal checks, sanitized errors, timeouts, audio routing and explicit CORS. They do not claim Cloudflare deployment or live model results.
+The twelve Worker tests use Node 24's experimental built-in SQLite to execute the actual quota SQL; OpenAI HTTP responses are mocked. They verify simultaneous requests across separate handler instances, minute/daily resets, fail-closed storage, validation, bounded uploads, output/date/refusal checks, sanitized errors, timeouts, audio routing, explicit CORS, connection diagnostics and the preflight stopping before paid calls when not ready. They do not claim Cloudflare deployment or live model results.
 
 Troubleshooting: `not_configured` means a binding/secret is absent or the Cue token is malformed; `unauthorized` means app/Worker Cue tokens differ; `quota_unavailable` usually means the D1 binding or schema needs fixing; `ai_configuration` means OpenAI rejected the key or model access; `rate_limit`/`daily_limit` requires waiting until the applicable window resets. `/health` can return true even when the table or upstream key is invalid.
 

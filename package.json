@@ -23,7 +23,9 @@
     "test:ios:paths": "node --test tests/ios-build-paths.test.cjs",
     "test:companion": "node --test tests/companion.test.cjs",
     "lint": "eslint .",
-    "test:worker": "node --test tests/worker.test.mjs"
+    "test:worker": "node --test tests/worker.test.mjs",
+    "ios:build:standalone": "expo run:ios --device --configuration Release --no-bundler",
+    "cloud:check": "node scripts/checkCloud.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

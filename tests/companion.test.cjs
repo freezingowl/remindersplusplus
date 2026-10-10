@@ -66,3 +66,18 @@ test("native selection restores the interrupted task and promotes due reminders"
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /7 selection scenarios passed/);
 });
+
+test("native build embeds only validated Cue settings and clears obsolete values", () => {
+  const { applyCloudConfiguration } = require("../plugins/withCueCompanion.cjs");
+  const token = "demo-client-token-at-least-32-characters";
+  const info = { CFBundleName: "Cue", CueCloudOrigin: "old", CueCloudAccessToken: "old" };
+  applyCloudConfiguration(info, { EXPO_PUBLIC_CUE_WORKER_URL: "https://cue.example/", EXPO_PUBLIC_CUE_CLIENT_TOKEN: token, OPENAI_API_KEY: "never-embed-this" });
+  assert.equal(info.CueCloudOrigin, "https://cue.example");
+  assert.equal(info.CueCloudAccessToken, token);
+  assert.equal(JSON.stringify(info).includes("never-embed-this"), false);
+  assert.throws(() => applyCloudConfiguration({}, { EXPO_PUBLIC_CUE_WORKER_URL: "http://cue.example", EXPO_PUBLIC_CUE_CLIENT_TOKEN: token }));
+  assert.throws(() => applyCloudConfiguration({}, { EXPO_PUBLIC_CUE_WORKER_URL: "https://cue.example", EXPO_PUBLIC_CUE_CLIENT_TOKEN: "sk-" + "x".repeat(40) }));
+  assert.throws(() => applyCloudConfiguration({}, { EXPO_PUBLIC_CUE_WORKER_URL: "https://cue.example", EXPO_PUBLIC_CUE_CLIENT_TOKEN: "" }));
+  applyCloudConfiguration(info, {});
+  assert.deepEqual(info, { CFBundleName: "Cue" });
+});
