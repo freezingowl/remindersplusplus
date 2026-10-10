@@ -24,6 +24,7 @@ import {
 } from "react-native";
 
 import { Composer } from "./src/components/Composer";
+import { LiquidSurface } from "./src/components/LiquidSurface";
 import { ReminderCard } from "./src/components/ReminderCard";
 import { SettingsSheet } from "./src/components/SettingsSheet";
 import {
@@ -340,12 +341,14 @@ export default function App() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.root}
       >
+        <View pointerEvents="none" style={styles.topGlow} />
+        <View pointerEvents="none" style={styles.trailingGlow} />
         <View style={styles.header}>
           <View>
-            <Text style={styles.kicker}>YOUR REMINDERS</Text>
-            <Text style={styles.brand}>Cue</Text>
+            <Text style={styles.kicker}>CUE</Text>
+            <Text style={styles.brand}>Today</Text>
             <Text style={styles.subtitle}>
-              {openCount === 0 ? "Nothing waiting on you." : `${openCount} thing${openCount === 1 ? "" : "s"} to remember.`}
+              {openCount === 0 ? "Your day is clear." : `${openCount} reminder${openCount === 1 ? "" : "s"} to keep in mind.`}
             </Text>
           </View>
           <Pressable
@@ -355,8 +358,10 @@ export default function App() {
             onPress={openSettings}
             style={({ pressed }) => [styles.settingsButton, pressed && styles.settingsPressed]}
           >
-            <Ionicons color="#202026" name="settings-outline" size={25} />
-            <View style={[styles.aiIndicator, cloudConfigured ? styles.aiReady : styles.aiOff]} />
+            <LiquidSurface isInteractive style={styles.settingsGlass}>
+              <Ionicons color="#30313A" name="settings-outline" size={22} />
+              <View style={[styles.aiIndicator, cloudConfigured ? styles.aiReady : styles.aiOff]} />
+            </LiquidSurface>
           </Pressable>
         </View>
 
@@ -396,10 +401,10 @@ export default function App() {
         </ScrollView>
 
         {toast ? (
-          <View pointerEvents="none" style={styles.toast}>
+          <LiquidSurface pointerEvents="none" style={styles.toast} tintColor="rgba(48, 49, 58, 0.86)">
             <Ionicons color="#FFFFFF" name="checkmark-circle" size={17} />
             <Text style={styles.toastText}>{toast}</Text>
-          </View>
+          </LiquidSurface>
         ) : null}
 
         <Composer
@@ -427,61 +432,87 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: "#F4F3F7",
+    backgroundColor: "#F5F6FA",
     flex: 1,
   },
   root: {
     flex: 1,
+    overflow: "hidden",
+  },
+  topGlow: {
+    backgroundColor: "#E7E8FF",
+    borderRadius: 170,
+    height: 340,
+    left: -145,
+    opacity: 0.66,
+    position: "absolute",
+    top: -205,
+    width: 340,
+  },
+  trailingGlow: {
+    backgroundColor: "#E5F3EE",
+    borderRadius: 140,
+    height: 280,
+    opacity: 0.72,
+    position: "absolute",
+    right: -170,
+    top: 178,
+    width: 280,
   },
   header: {
     alignItems: "flex-start",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingBottom: 22,
-    paddingHorizontal: 25,
-    paddingTop: 22,
+    paddingBottom: 19,
+    paddingHorizontal: 20,
+    paddingTop: 18,
   },
   kicker: {
-    color: "#87858F",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.3,
+    color: "#6D6F80",
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
   },
   brand: {
-    color: "#17171D",
-    fontSize: 48,
-    fontWeight: "900",
-    letterSpacing: -2.3,
-    lineHeight: 53,
-    marginTop: 2,
+    color: "#22242D",
+    fontSize: 34,
+    fontWeight: "700",
+    letterSpacing: -0.9,
+    lineHeight: 40,
+    marginTop: 5,
   },
   subtitle: {
-    color: "#71707A",
+    color: "#676A78",
     fontSize: 15,
-    fontWeight: "600",
-    marginTop: 4,
+    fontWeight: "500",
+    marginTop: 3,
   },
   settingsButton: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#EBE9EE",
-    borderRadius: 25,
-    borderWidth: 1,
-    height: 50,
+    height: 46,
     justifyContent: "center",
-    marginTop: 3,
-    shadowColor: "#343141",
-    shadowOffset: { width: 0, height: 7 },
-    shadowOpacity: 0.08,
-    shadowRadius: 17,
-    width: 50,
+    marginTop: 5,
+    width: 46,
+  },
+  settingsGlass: {
+    alignItems: "center",
+    borderColor: "rgba(255, 255, 255, 0.88)",
+    borderRadius: 23,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: "center",
+    shadowColor: "#555B73",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.11,
+    shadowRadius: 12,
+    width: 46,
   },
   settingsPressed: {
     opacity: 0.7,
     transform: [{ scale: 0.96 }],
   },
   aiIndicator: {
-    borderColor: "#FFFFFF",
+    borderColor: "rgba(255, 255, 255, 0.96)",
     borderRadius: 6,
     borderWidth: 2,
     bottom: 2,
@@ -498,32 +529,34 @@ const styles = StyleSheet.create({
   },
   content: {
     flexGrow: 1,
-    paddingBottom: 16,
-    paddingHorizontal: 20,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
   },
   cards: {
-    gap: 14,
+    gap: 10,
   },
   emptyState: {
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 360,
-    paddingHorizontal: 37,
+    minHeight: 330,
+    paddingHorizontal: 34,
   },
   emptyIcon: {
     alignItems: "center",
-    backgroundColor: "#FFE9E5",
-    borderRadius: 32,
-    height: 64,
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    borderColor: "rgba(255, 255, 255, 0.92)",
+    borderRadius: 28,
+    borderWidth: 1,
+    height: 56,
     justifyContent: "center",
-    width: 64,
+    width: 56,
   },
   emptyTitle: {
-    color: "#26252C",
-    fontSize: 23,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-    marginTop: 17,
+    color: "#2A2C36",
+    fontSize: 22,
+    fontWeight: "700",
+    letterSpacing: -0.4,
+    marginTop: 15,
   },
   emptyText: {
     color: "#77757F",
@@ -540,16 +573,15 @@ const styles = StyleSheet.create({
   toast: {
     alignItems: "center",
     alignSelf: "center",
-    backgroundColor: "#27262C",
     borderRadius: 999,
-    bottom: 8,
+    bottom: 10,
     flexDirection: "row",
     gap: 7,
     maxWidth: "88%",
     paddingHorizontal: 14,
     paddingVertical: 10,
     position: "absolute",
-    shadowColor: "#000000",
+    shadowColor: "#252734",
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
     shadowRadius: 12,

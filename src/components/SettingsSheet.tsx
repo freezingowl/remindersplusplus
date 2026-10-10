@@ -15,6 +15,8 @@ import {
   View,
 } from "react-native";
 
+import { LiquidSurface } from "./LiquidSurface";
+
 type SettingsSheetProps = {
   visible: boolean;
   cloudConfigured: boolean;
@@ -56,7 +58,7 @@ export function SettingsSheet({
           <View style={styles.handle} />
           <View style={styles.header}>
             <View>
-              <Text style={styles.eyebrow}>CUE COMPANION</Text>
+              <Text style={styles.eyebrow}>CUE</Text>
               <Text style={styles.title}>Settings</Text>
             </View>
             <Pressable
@@ -65,7 +67,9 @@ export function SettingsSheet({
               onPress={onClose}
               style={styles.closeButton}
             >
-              <Ionicons color="#2C2B31" name="close" size={22} />
+              <LiquidSurface isInteractive style={styles.closeGlass}>
+                <Ionicons color="#343640" name="close" size={20} />
+              </LiquidSurface>
             </Pressable>
           </View>
 
@@ -111,17 +115,17 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
   },
   sheet: {
-    backgroundColor: "#FFFFFF",
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingBottom: 36,
-    paddingHorizontal: 24,
+    backgroundColor: "rgba(250, 250, 252, 0.98)",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingBottom: 34,
+    paddingHorizontal: 20,
     paddingTop: 10,
   },
-  sheetScroll: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 32, borderTopRightRadius: 32, flexGrow: 0, maxHeight: "90%" },
+  sheetScroll: { backgroundColor: "transparent", borderTopLeftRadius: 28, borderTopRightRadius: 28, flexGrow: 0, maxHeight: "90%" },
   handle: {
     alignSelf: "center",
-    backgroundColor: "#D8D6DD",
+    backgroundColor: "#C9CBD3",
     borderRadius: 4,
     height: 5,
     marginBottom: 18,
@@ -133,41 +137,48 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   eyebrow: {
-    color: "#8B8993",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1.15,
+    color: "#747786",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   title: {
-    color: "#201F26",
-    fontSize: 27,
-    fontWeight: "800",
-    letterSpacing: -0.7,
+    color: "#282A33",
+    fontSize: 28,
+    fontWeight: "700",
+    letterSpacing: -0.65,
     marginTop: 3,
   },
   closeButton: {
     alignItems: "center",
-    backgroundColor: "#F2F1F5",
+    height: 40,
+    justifyContent: "center",
+    width: 40,
+  },
+  closeGlass: {
+    alignItems: "center",
+    borderColor: "rgba(255, 255, 255, 0.92)",
     borderRadius: 20,
+    borderWidth: 1,
     height: 40,
     justifyContent: "center",
     width: 40,
   },
   description: {
-    color: "#686670",
+    color: "#5E626F",
     fontSize: 15,
     lineHeight: 21,
     marginTop: 19,
   },
   securityText: {
-    color: "#74717C",
+    color: "#707581",
     flex: 1,
     fontSize: 12,
     lineHeight: 17,
   },
-  companion: { borderTopColor: "#E6E4EA", borderTopWidth: 1, marginTop: 22, paddingTop: 12 },
+  companion: { borderTopColor: "#E2E4E9", borderTopWidth: 1, marginTop: 22, paddingTop: 14 },
   companionRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  companionTitle: { color: "#24232A", fontSize: 15, fontWeight: "600" },
-  shortcutButton: { alignItems: "center", flexDirection: "row", gap: 5, paddingTop: 12, paddingBottom: 3 },
-  shortcutText: { color: "#686670", fontSize: 13, fontWeight: "600" },
+  companionTitle: { color: "#2D3039", fontSize: 16, fontWeight: "600" },
+  shortcutButton: { alignItems: "center", flexDirection: "row", gap: 5, paddingBottom: 3, paddingTop: 13 },
+  shortcutText: { color: "#4C6579", fontSize: 13, fontWeight: "700" },
 });

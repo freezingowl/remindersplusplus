@@ -59,13 +59,13 @@ export function ReminderCard({ reminder, onPress, onLongPress }: ReminderCardPro
         <View style={styles.metaRow}>
           {reminder.source === "voice" ? (
             <View style={[styles.chip, isDone && styles.chipDone]}>
-              <Ionicons color={isDone ? "#FEE2DE" : "#F05243"} name="mic" size={11} />
+              <Ionicons color={isDone ? "#6B7780" : "#53727C"} name="mic" size={12} />
               <Text style={[styles.chipText, isDone && styles.chipTextDone]}>Voice</Text>
             </View>
           ) : null}
           {dueLabel ? (
             <View style={[styles.due, isDone && styles.dueDone]}>
-              <Ionicons color={isDone ? "#FFE4DE" : "#75737E"} name="calendar-outline" size={13} />
+              <Ionicons color={isDone ? "#758089" : "#606673"} name="calendar-outline" size={13} />
               <Text style={[styles.dueText, isDone && styles.dueTextDone]}>{dueLabel}</Text>
             </View>
           ) : null}
@@ -81,7 +81,7 @@ export function ReminderCard({ reminder, onPress, onLongPress }: ReminderCardPro
       </View>
 
       <View style={[styles.check, isDone && styles.checkDone]}>
-        {isDone ? <Ionicons color="#FF4B3A" name="checkmark" size={21} /> : null}
+        {isDone ? <Ionicons color="#FFFFFF" name="checkmark" size={18} /> : null}
       </View>
     </Pressable>
   );
@@ -90,20 +90,23 @@ export function ReminderCard({ reminder, onPress, onLongPress }: ReminderCardPro
 const styles = StyleSheet.create({
   card: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.78)",
+    borderColor: "rgba(255, 255, 255, 0.94)",
+    borderRadius: 21,
+    borderWidth: 1,
     flexDirection: "row",
-    gap: 20,
-    minHeight: 152,
-    paddingHorizontal: 24,
-    paddingVertical: 22,
-    shadowColor: "#272438",
-    shadowOffset: { width: 0, height: 11 },
-    shadowOpacity: 0.06,
-    shadowRadius: 24,
+    gap: 16,
+    minHeight: 118,
+    paddingHorizontal: 18,
+    paddingVertical: 17,
+    shadowColor: "#747A91",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
   },
   cardDone: {
-    backgroundColor: "#FF4B3A",
+    backgroundColor: "rgba(233, 245, 239, 0.84)",
+    borderColor: "rgba(220, 238, 228, 0.98)",
   },
   cardPressed: {
     opacity: 0.84,
@@ -116,28 +119,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 7,
-    marginBottom: 11,
+    gap: 8,
+    marginBottom: 8,
   },
   chip: {
     alignItems: "center",
-    backgroundColor: "#FFF0EE",
+    backgroundColor: "rgba(226, 239, 239, 0.86)",
     borderRadius: 99,
     flexDirection: "row",
     gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   chipDone: {
-    backgroundColor: "#D93D30",
+    backgroundColor: "rgba(220, 236, 227, 0.96)",
   },
   chipText: {
-    color: "#D94739",
+    color: "#46636B",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "700",
   },
   chipTextDone: {
-    color: "#FEE2DE",
+    color: "#557060",
   },
   due: {
     alignItems: "center",
@@ -148,43 +151,44 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   dueText: {
-    color: "#75737E",
+    color: "#606673",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   dueTextDone: {
-    color: "#FFE4DE",
+    color: "#68736D",
   },
   title: {
-    color: "#202027",
-    fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.55,
-    lineHeight: 30,
+    color: "#292B34",
+    fontSize: 17,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+    lineHeight: 22,
   },
   titleDone: {
-    color: "#FFFFFF",
+    color: "#65736A",
+    textDecorationLine: "line-through",
   },
   note: {
-    color: "#77757F",
+    color: "#777C89",
     fontSize: 14,
     lineHeight: 19,
-    marginTop: 8,
+    marginTop: 5,
   },
   noteDone: {
-    color: "#FFE7E3",
+    color: "#849087",
   },
   check: {
     alignItems: "center",
-    borderColor: "#A5A3AB",
+    borderColor: "#A8ADB8",
     borderRadius: 999,
     borderWidth: 2.4,
-    height: 45,
+    height: 30,
     justifyContent: "center",
-    width: 45,
+    width: 30,
   },
   checkDone: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#FFFFFF",
+    backgroundColor: "#5C9D78",
+    borderColor: "#5C9D78",
   },
 });

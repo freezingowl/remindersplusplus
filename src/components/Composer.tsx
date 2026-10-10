@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
+import { LiquidSurface } from "./LiquidSurface";
+
 type ComposerProps = {
   value: string;
   isRecording: boolean;
@@ -28,10 +30,14 @@ export function Composer({
           <Text style={styles.listeningText}>Listening — tap the mic when you&apos;re done</Text>
         </View>
       ) : (
-        <Text style={styles.prompt}>Say it naturally — Cue figures out the rest.</Text>
+        <Text style={styles.prompt}>Add a reminder</Text>
       )}
 
-      <View style={[styles.bar, isRecording && styles.barRecording]}>
+      <LiquidSurface
+        isInteractive
+        style={[styles.bar, isRecording && styles.barRecording]}
+        tintColor={isRecording ? "rgba(255, 107, 91, 0.18)" : undefined}
+      >
         <Pressable
           accessibilityLabel={isRecording ? "Stop recording" : "Record a reminder"}
           accessibilityRole="button"
@@ -77,31 +83,30 @@ export function Composer({
             <Ionicons color="#FFFFFF" name="arrow-up" size={23} />
           )}
         </Pressable>
-      </View>
+      </LiquidSurface>
 
-      <Text style={styles.example}>Try: “Remind me to call Mum tomorrow at 8.”</Text>
+      <Text style={styles.example}>Try “Call Mum tomorrow at 8.”</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#F4F3F7",
-    paddingBottom: 14,
-    paddingHorizontal: 20,
-    paddingTop: 10,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingTop: 7,
   },
   prompt: {
-    color: "#74737C",
+    color: "#5D6070",
     fontSize: 13,
-    fontWeight: "600",
-    marginBottom: 9,
-    paddingHorizontal: 4,
+    fontWeight: "700",
+    marginBottom: 8,
+    paddingHorizontal: 5,
   },
   listeningPill: {
     alignItems: "center",
     alignSelf: "flex-start",
-    backgroundColor: "#FFE5E0",
+    backgroundColor: "rgba(255, 233, 229, 0.88)",
     borderRadius: 999,
     flexDirection: "row",
     gap: 7,
@@ -122,20 +127,19 @@ const styles = StyleSheet.create({
   },
   bar: {
     alignItems: "flex-end",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E7E5EB",
-    borderRadius: 25,
+    borderColor: "rgba(255, 255, 255, 0.95)",
+    borderRadius: 22,
     borderWidth: 1,
     flexDirection: "row",
-    minHeight: 58,
+    minHeight: 56,
     padding: 6,
-    shadowColor: "#2C2940",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
+    shadowColor: "#565C73",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 14,
   },
   barRecording: {
-    borderColor: "#FFB3A9",
+    borderColor: "rgba(255, 156, 145, 0.9)",
   },
   micButton: {
     alignItems: "center",
@@ -144,7 +148,7 @@ const styles = StyleSheet.create({
     width: 45,
   },
   input: {
-    color: "#1F1F26",
+    color: "#252730",
     flex: 1,
     fontSize: 16,
     lineHeight: 21,
@@ -155,7 +159,7 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     alignItems: "center",
-    backgroundColor: "#19191D",
+    backgroundColor: "#FA5C50",
     borderRadius: 21,
     height: 42,
     justifyContent: "center",
@@ -163,16 +167,16 @@ const styles = StyleSheet.create({
     width: 42,
   },
   submitButtonDisabled: {
-    backgroundColor: "#C5C4CA",
+    backgroundColor: "#C4C7D0",
   },
   buttonPressed: {
     opacity: 0.72,
     transform: [{ scale: 0.96 }],
   },
   example: {
-    color: "#92919A",
+    color: "#858897",
     fontSize: 11,
     marginTop: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
   },
 });

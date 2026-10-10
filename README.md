@@ -48,7 +48,11 @@ npm run start:dev:tunnel
 
 Open the installed **Cue** development app on the iPhone, or scan the development-build QR code it prints. This project includes both `expo-dev-client` and the local `@expo/ngrok` helper, so this command targets your installed development build and uses a tunnel rather than Expo Go.
 
-For regular iteration after the first install, use the same `npm run start:dev:tunnel` command. TypeScript-only UI changes do not need another native build.
+For regular iteration after the first install, use the same `npm run start:dev:tunnel` command. TypeScript-only UI changes do not need another native build. If you pull this visual refresh into an already-installed development app, rebuild it once because it adds Expo's native glass module; later JavaScript-only UI changes still reload normally.
+
+### Liquid Glass interface
+
+Cue follows Apple's [Materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials): native Liquid Glass is reserved for the primary capture surface and small action controls, while reminder rows stay in the calmer content layer. On iOS 26 or later, the app uses Expo's native [GlassEffect](https://docs.expo.dev/versions/latest/sdk/glass-effect/) implementation when the runtime API is available. iOS versions without the API, accessibility-adjusted appearances, Android, web, and preexisting development builds use the same layout with an opaque, legible material fallback.
 
 #### ExpoModulesJSI compiler workaround
 
@@ -149,6 +153,7 @@ Libraries and services:
 
 - [Expo Audio](https://docs.expo.dev/versions/latest/sdk/audio/) for microphone capture.
 - [Expo Notifications](https://docs.expo.dev/versions/latest/sdk/notifications/) for local notifications.
+- [Expo GlassEffect](https://docs.expo.dev/versions/latest/sdk/glass-effect/) for native iOS Liquid Glass on selected in-app controls.
 - [Expo SecureStore](https://docs.expo.dev/versions/latest/sdk/securestore/) for removing legacy personal keys, and AsyncStorage for on-device reminders.
 - [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs) for [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna) extraction, and [OpenAI transcription](https://developers.openai.com/api/docs/guides/speech-to-text) for voice input, called exclusively from [Cloudflare Workers](https://developers.cloudflare.com/workers/) with [D1](https://developers.cloudflare.com/d1/) quotas.
 - [ActivityKit](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities), [Live Activity design guidance](https://developer.apple.com/design/human-interface-guidelines/live-activities), [WidgetKit animations](https://developer.apple.com/documentation/widgetkit/animating-data-updates-in-widgets-and-live-activities), and [LiveActivityIntent](https://developer.apple.com/documentation/appintents/liveactivityintent) for the native companion. Back Tap and text input follow Apple's [Shortcut setup](https://support.apple.com/en-ie/guide/shortcuts/apd897693606/ios) and [Ask for Input](https://support.apple.com/guide/shortcuts/use-the-ask-for-input-action-apd68b5c9161/ios) documentation.
@@ -180,6 +185,8 @@ After implementing the native companion on 11 October 2026, TypeScript/ESLint ch
 After moving AI calls to Cloudflare on 11 October 2026, all ten offline Worker scenarios, TypeScript/ESLint checks, both companion checks, and the four path tests passed. The complete unsigned Debug iPhone app/widget compiled successfully after synchronizing the native cloud bridge. Worker deployment, live OpenAI results/latency and physical Back Tap remain for the participant to test; [the Worker guide](worker/README.md) gives the exact deployment and two-minute reminder test.
 
 After fixing the native configuration failure on 11 October 2026, all twelve Worker tests, three companion tests (including seven selection/six configuration cases), four iOS path checks, typecheck and lint passed. The complete unsigned Release iPhone app/widget build passed. Its nonempty `main.jsbundle`, matching native Worker origin/token, Live Activities support, embedded extension and App Intents metadata were verified without exposing tokens. Live preflight stopped at incomplete Worker setup before making a paid call. See [TESTING.md](TESTING.md) for the gated end-to-end procedure.
+
+After the HIG visual refresh on 11 October 2026, `npm run typecheck`, `npm run lint`, and the iOS JavaScript export passed. CocoaPods installed `ExpoGlassEffect (57.0.4)`, and its unsigned arm64 iPhone target compiled with the installed Xcode toolchain. CoreSimulator was unavailable in this environment, so the new rendered interface still needs a physical iOS 26 device review; the safe material fallback covers unavailable native APIs.
 
 Simulator UI access was not approved for this chat. No rendered Liquid Glass, automatic deadline transition, background Shortcut execution, Back Tap, real OpenAI response, signed install, or physical-device behavior was verified. No OpenAI key or paid request was used for these checks.
 

@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T04:10:48+05:30 — Refresh the in-app interface with restrained Liquid Glass
+
+- Changed: Reworked the in-app reminder screen around a clearer Today hierarchy, compact material list rows, semantic completed state, a calmer settings sheet, and an elevated capture surface. Added a reusable guarded Liquid Glass surface backed by Expo's native `expo-glass-effect` module, using it only for the composer, transient confirmation, and small action controls; unsupported platforms, inaccessible APIs, and existing development binaries fall back to a legible material surface. Added the compatible dependency, refreshed CocoaPods, and documented the iOS 26 behavior.
+- Why: Apply current Apple HIG guidance: make controls visually distinct from content, reserve Liquid Glass for functional layers, use it sparingly, and retain accessible contrast rather than turning every reminder card into glass.
+- Validation: `npm run typecheck`, `npm run lint`, `git diff --check`, and the iOS JavaScript export passed. `ExpoGlassEffect (57.0.4)` is autolinked in Pods and its unsigned arm64 target compiled with Xcode. CoreSimulator services were unavailable, so rendered iOS 26 appearance needs final physical-device review.
+- Limitations: The native Live Activity/widget source, state, presentation, and behavior were intentionally unchanged. The first installation of this native dependency requires rebuilding an existing iPhone development app; later JavaScript UI changes can reload normally. No simulator or physical-device visual run was possible in this environment.
+
 ## 2026-10-11T02:36:53+05:30 — Fix Shortcut cloud bootstrap and document an ordered phone test
 
 - Changed: Native sync/prebuild now validates and embeds the Worker origin and separate Cue access token in the app Info.plist. The native service prefers those installed settings and an empty JavaScript configuration no longer erases saved settings; JavaScript hydrates from native settings for consistent text/voice calls. Shortcut receipts name the saved reminder and time. Added authenticated Worker status/schema diagnostics, missing-setting health responses, an in-app connection check, a backend preflight with the exact two-minute sushi prompt, and a standalone Release build command. Added TESTING.md and updated setup/submission docs.
