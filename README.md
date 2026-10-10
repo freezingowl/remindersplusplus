@@ -52,6 +52,21 @@ If Xcode reports that `RuntimeScheduler` cannot use `SWIFT_RETURNS_RETAINED`, th
 
 This is a narrow workaround, not full support for SDK 57 on older Xcode. Once an SDK-compatible package release includes the upstream fix, remove this patch and revalidate the native build; do not independently jump `expo-modules-jsi` to another SDK's major version. Provisioning-profile errors and ngrok connection failures are separate from this compiler error.
 
+#### Build scripts and paths containing spaces
+
+The installed Expo Constants podspec and the generated React Native bundle phase have quoting bugs when a directory name contains a space, such as `Codex hackathon`. The Constants patch in `patches/expo-constants+57.0.21.patch` follows [Expo's upstream path-quoting fix #48747](https://github.com/expo/expo/pull/48747); it quotes both the script invocation and the `PROJECT_DIR` lookup. `plugins/withIosBuildPathQuotes.cjs`, registered in `app.json`, quotes the RN script invocation during future prebuilds. The same small correction has already been applied to the existing Cue project without changing signing settings.
+
+The patches apply automatically on npm installs. For an existing native project, refresh Pods after reinstalling or applying a podspec patch:
+
+```bash
+cd ios
+pod install --no-repo-update
+cd ..
+npm run ios:build:device
+```
+
+Do not rename the workspace or use `expo prebuild --clean` just for this error. `npm run test:ios:paths` runs four regression checks for space-containing paths and the config plugin; these tests require CocoaPods. The Dev Launcher dependency-analysis warning is non-blocking and does not need to be fixed to install the app.
+
 If ngrok reports that the tunnel cannot connect, stop any older Expo servers with `Ctrl+C`, run `npm install` once to ensure the local tunnel helper is present, and retry `npm run start:dev:tunnel`. A restrictive VPN, firewall, or public Wi-Fi can block ngrok; in that case use `npm run start:dev` while the phone and Mac share the same Wi-Fi.
 
 ### Simulator and Expo Go alternatives
@@ -121,6 +136,12 @@ On 11 October 2026, after backporting the ExpoModulesJSI fix:
 - `npm run typecheck`, `npm run lint`, and `npm run postinstall` passed.
 - `git apply --check --reverse patches/expo-modules-jsi+57.1.1.patch` confirmed the installed sources match the patch.
 - The ExpoModulesJSI build script compiled the `iphoneos`/arm64 framework successfully with Xcode 26.3 (Swift 6.2.4). This verifies the affected framework, not the complete signed app, device installation, or tunnel.
+
+After correcting the build-script quoting on 11 October 2026:
+
+- `npm run test:ios:paths` passed all four checks; postinstall, typecheck, lint, shell/Ruby syntax, and Expo prebuild config validation passed.
+- `pod install --no-repo-update` refreshed the Constants build phase while leaving Cue's project and entitlements unchanged. Only the RN bundle script invocation was subsequently quoted in the existing Cue project.
+- A complete Debug iPhone build passed with Xcode 26.3 using `xcodebuild -workspace ios/Cue.xcworkspace -scheme Cue -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' -quiet CODE_SIGNING_ALLOWED=NO build`. The resulting app contains an arm64 executable and the expected embedded Constants manifest. This is an unsigned compile/link check, not a signed install or runtime test; non-fatal dependency warnings remain.
 
 ## Known limitations
 

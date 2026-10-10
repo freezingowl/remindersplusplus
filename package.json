@@ -19,6 +19,7 @@
     "ios:build:device": "expo run:ios --device --no-bundler",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test:ios:paths": "node --test tests/ios-build-paths.test.cjs",
     "lint": "eslint ."
   },
   "dependencies": {
