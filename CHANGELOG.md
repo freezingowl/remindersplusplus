@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-10T23:30:56+05:30 — Add wired development-build and tunnel workflow
+
+- Changed: Added `expo-dev-client`, the project-local `@expo/ngrok` helper, device bundle identifiers, a development scheme, and scripts for building a wired iPhone development build and starting it through an explicit tunnel. Reworked the setup documentation around that workflow.
+- Why: Enable installation of Cue as a native development build on a USB-connected iPhone and make the requested tunnel command target that app rather than Expo Go.
+- Validation: Checked current Expo development-build and tunneling guidance; `npm run typecheck`, `npm run lint`, Expo config validation, and the new command help passed. A live public tunnel remains to be tested from the developer's network.
+- Limitations: The first iOS install still requires Xcode, an unlocked/trusted iPhone in Developer Mode, and development signing. Tunnel availability also depends on ngrok and network egress.
+
 ## 2026-10-10T23:18:46+05:30 — Add reliable simulator and device launch scripts
 
 - Changed: Added explicit localhost simulator scripts and LAN physical-device scripts in `package.json`; added `.expo/` to `.gitignore`; documented the correct simulator, device, and optional tunnel commands in `README.md`.

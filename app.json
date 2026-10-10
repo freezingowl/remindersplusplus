@@ -3,6 +3,7 @@
     "name": "Cue",
     "slug": "cue-reminders",
     "version": "1.0.0",
+    "scheme": "cue",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
@@ -18,9 +19,11 @@
       "expo-secure-store"
     ],
     "ios": {
+      "bundleIdentifier": "com.remindersplusplus.cue",
       "supportsTablet": true
     },
     "android": {
+      "package": "com.remindersplusplus.cue",
       "edgeToEdgeEnabled": true
     }
   }

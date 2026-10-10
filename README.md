@@ -19,19 +19,37 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 ### Prerequisites
 
 - Node.js 24.3 or newer is recommended by the installed React Native version. The project bundled successfully with Node 24.2.0, but npm reports an engine warning on that version.
-- Expo Go or an iOS/Android simulator/device. A physical device is best for trying microphone recording and notifications.
+- Expo Go or an iOS/Android simulator/device. A physical device is best for trying microphone recording and notifications; Xcode is required to compile a custom iOS development build.
 - An OpenAI API key only if you want natural-language parsing and voice capture.
 
-### Install and start
+### Install a development build on a wired iPhone
+
+This is the actual app binary installed on your device, not Expo Go. Connect the iPhone by USB, unlock it, tap **Trust** if asked, and enable **Developer Mode** in iPhone Settings → Privacy & Security. You also need Xcode installed and signed in with an Apple ID for development signing.
 
 ```bash
 npm install
-npm run ios:simulator
+npm run ios:build:device
 ```
 
-`ios:simulator` explicitly uses `localhost`, so it never waits for an ngrok tunnel. It starts Metro and opens the iOS simulator. For an Android emulator, use `npm run android`.
+Choose the wired iPhone when Expo asks. The first build can take a few minutes because it generates the native iOS project, installs pods, signs the app for development, and installs Cue. You only need to rebuild when native dependencies or `app.json` changes.
 
-For a physical iPhone, put the Mac and phone on the same Wi-Fi network, then run `npm run ios:device` and scan the QR code in Expo Go. This uses your LAN—not ngrok. If LAN discovery is blocked by the network, `npm run start:tunnel` remains an optional fallback.
+Then start the development server through a tunnel:
+
+```bash
+npm run start:dev:tunnel
+```
+
+Open the installed **Cue** development app on the iPhone, or scan the development-build QR code it prints. This project includes both `expo-dev-client` and the local `@expo/ngrok` helper, so this command targets your installed development build and uses a tunnel rather than Expo Go.
+
+For regular iteration after the first install, use the same `npm run start:dev:tunnel` command. TypeScript-only UI changes do not need another native build.
+
+If ngrok reports that the tunnel cannot connect, stop any older Expo servers with `Ctrl+C`, run `npm install` once to ensure the local tunnel helper is present, and retry `npm run start:dev:tunnel`. A restrictive VPN, firewall, or public Wi-Fi can block ngrok; in that case use `npm run start:dev` while the phone and Mac share the same Wi-Fi.
+
+### Simulator and Expo Go alternatives
+
+`npm run ios:simulator` explicitly uses `localhost`, so it never waits for an ngrok tunnel. It starts the iOS simulator with Expo Go. For an Android emulator, use `npm run android`.
+
+For Expo Go on a physical iPhone, put the Mac and phone on the same Wi-Fi network, then run `npm run ios:go:device` and scan its QR code. This uses your LAN—not ngrok.
 
 Useful commands:
 
@@ -41,6 +59,8 @@ npm run lint
 npm run ios
 npm run ios:simulator
 npm run ios:device
+npm run ios:build:device
+npm run start:dev:tunnel
 npm run android
 ```
 
