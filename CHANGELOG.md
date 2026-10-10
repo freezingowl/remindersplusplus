@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T02:12:06+05:30 — Configure the deployed Worker and start the companion on first capture
+
+- Changed: Created ignored local `.env` with the user-provided Worker origin and a separate generated Cue access token (secret value omitted from logs/commits). Native capture now starts the first Live Activity automatically for in-app additions as well as Shortcuts, preserves an explicit in-app opt-out, and starts a new enabled session after expiry on a later capture. Synced native sources without changing signing settings; clarified setup/lifetime behavior in README and the Worker guide.
+- Why: Finish the requested app-side cloud configuration and make the first reminder show its companion without requiring an initial Settings toggle. The App Intent is built in; iPhone Shortcut composition and Back Tap assignment remain manual.
+- Validation: Environment origin/token format, file mode 0600, removal of the obsolete key setting and Git exclusion checked without exposing secrets. Live Worker `/health` returned HTTP 503 with `ok:false`, confirming configuration is still incomplete. Companion checks (including seven Swift selection cases), typecheck/lint and the complete unsigned iPhone app/widget build passed. Diff whitespace passed. Expo was restarted with the new environment; ngrok timed out twice, so a LAN development server was started successfully on port 8081.
+- Limitations: Worker binding/secrets still need completing, including setting its `CUE_CLIENT_TOKEN` to the local generated value. No paid AI request was made. The earlier signed CLI install attempt failed with `errSecInternalComponent` when signing CueCompanion; the user will handle installation, and no further install was attempted. First-capture appearance, Back Tap and physical alerts remain unverified. Apple allows eight active hours per activity; no perpetual renewal is implemented.
+
 ## 2026-10-11T02:03:14+05:30 — Move all AI capture behind a rate-limited Cloudflare Worker
 
 - Changed: Added pasteable `worker/worker.mjs`, D1 schema, optional Wrangler configuration and deployment/Back Tap guide. Replaced app/native direct OpenAI requests with authenticated Worker calls, removed the API-key entry UI and unparsed fallback, and delete old stored OpenAI keys during setup. Added separate Worker URL/Cue token environment configuration persisted for native Shortcuts, bounded request timeouts, voice capture/upload limits and ten offline backend tests. Updated README, submission setup, environment example, ignores and scripts.

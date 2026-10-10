@@ -125,9 +125,12 @@ actor CueCompanionService {
         isCapturing = true
         defer { isCapturing = false }
         revision += 1
-        // A Shortcut explicitly requests the companion; in-app capture respects the setting.
-        if source == "shortcut" { UserDefaults.standard.set(true, forKey: enabledKey) }
-        await showFeedback(phase: "processing", title: "Adding reminder…", startIfNeeded: source == "shortcut")
+        // First capture starts a session. Preserve an explicit in-app opt-out;
+        // invoking the companion's Shortcut explicitly enables it again.
+        if source == "shortcut" || UserDefaults.standard.object(forKey: enabledKey) == nil {
+            UserDefaults.standard.set(true, forKey: enabledKey)
+        }
+        await showFeedback(phase: "processing", title: "Adding reminder…", startIfNeeded: true)
         do {
             let parsed = try await parse(text)
             var reminder = CueReminder(id: UUID().uuidString, title: parsed.title, note: parsed.note,

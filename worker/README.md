@@ -45,7 +45,7 @@ On the iPhone:
 3. Add **Cue → Add Cue reminder**. Set **Reminder** to the **Provided Input** from the first action.
 4. Run it from Shortcuts once while unlocked. Then select it in **Settings → Accessibility → Touch → Back Tap → Double Tap** or **Triple Tap**.
 
-No HTTP action or secret is needed inside the Shortcut. The native Cue action calls the configured Worker, saves the reminder, schedules a local alert when permitted, shows processing/saved feedback in its Live Activity, and restores the due/upcoming reminder afterwards. Allow Cue notifications and Live Activities; turn on **Lock Screen companion** in Cue settings. Input/authentication while locked is controlled by iOS and requires device testing. An activity still lasts at most eight active hours; this backend does not add APNs scheduling or perpetual renewal.
+No HTTP action or secret is needed inside the Shortcut. The native Cue action calls the configured Worker, saves the reminder, schedules a local alert when permitted, shows processing/saved feedback in its Live Activity, and restores the due/upcoming reminder afterwards. Allow Cue notifications and Live Activities. The first in-app capture starts a session automatically; an explicit off setting in Cue is respected for in-app captures. The Shortcut explicitly starts/enables its companion session. Input/authentication while locked is controlled by iOS and requires device testing. An activity still lasts at most eight active hours; this backend does not add APNs scheduling or perpetual renewal.
 
 ## Model and limits
 

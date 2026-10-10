@@ -100,6 +100,8 @@ Copy `.env.example` to `.env` if needed and set `EXPO_PUBLIC_CUE_WORKER_URL` to 
 
 AI capture is cloud-only. Missing configuration, offline/network failures, and rate limits show an error instead of silently saving unparsed text. The demo uses `gpt-6-luna` with reasoning disabled for focused, low-cost extraction; voice uses `gpt-4o-mini-transcribe`. Limits are global: 10 text requests/minute and 500/UTC day, plus 2 voice requests/minute and 50/UTC day. See the Worker guide for the security scope, tests and tuning. The app access token is shipped to the client and is suitable for a private demo; public distribution needs real user authentication.
 
+For the participant’s configured local checkout, `.env` now contains the supplied Worker origin and a generated Cue access token. Set the matching token as the Worker’s `CUE_CLIENT_TOKEN` secret. At the latest check, `/health` returned `ok:false`; cloud binding/secrets still need completing before AI capture will succeed. The latest automatic-first-capture sources passed an unsigned iPhone build and companion/typecheck/lint checks. A signed CLI attempt failed at widget signing (`errSecInternalComponent`); complete installation through Xcode with access to the signing certificate for both targets. The Expo tunnel timed out twice; the development server is currently running over LAN, so use the same Wi-Fi network.
+
 ## Demo flow
 
 1. Open Cue and type: `Remind me to call Mum tomorrow at 8 PM`.
@@ -110,7 +112,7 @@ AI capture is cloud-only. Missing configuration, offline/network failures, and r
 
 ## Lock Screen companion and Back Tap
 
-1. Rebuild and install the custom iPhone app. Configure the cloud environment, launch it once, and turn on **Lock Screen companion**. Allow Live Activities and notifications when prompted.
+1. Rebuild and install the custom iPhone app. Configure the cloud environment and launch it once. The first in-app capture starts **Lock Screen companion** automatically; you can also start it from Settings. Allow Live Activities and notifications when prompted. An explicit off setting is respected for in-app captures.
 2. In Apple's **Shortcuts** app, create a shortcut with **Ask for Input**, using input type **Text**. Add **Cue → Add Cue reminder** and pass the provided input into its **Reminder** parameter. Save it as “Add to Cue.”
 3. In iPhone **Settings → Accessibility → Touch → Back Tap**, assign that shortcut to Double Tap or Triple Tap. Start testing with the phone unlocked; the input sheet and authentication behavior while locked need physical-device verification.
 4. Back Tap and enter a clear sentence such as `Remind me to call Mum tomorrow at 8 PM`. The native action sends it to the Worker, saves its title and optional timezone-aware due date into Cue's store, and schedules a local notification if permitted.
@@ -121,7 +123,7 @@ With nothing waiting, the card collapses to the small face and “cue” mark. D
 
 Timing has two separate mechanisms. The OS schedules the actual notification. The Live Activity preloads the earliest upcoming task and sets its `staleDate` to that deadline; when WidgetKit marks that snapshot stale, the view can display that preloaded task as **NOW**. This is a narrow visual transition, not app execution or a general queue scheduler. Further ranking/data updates occur when Cue, its Shortcut, or a completion action runs. Exact transition timing still needs runtime verification. A backend with ActivityKit push updates is needed for arbitrary unattended changes to the same card; background refresh does not guarantee exact-time execution.
 
-An active Live Activity lasts **at most eight hours**, and people can dismiss it. Ended content can remain on the Lock Screen for up to four additional hours. Updating the same activity does not renew that limit. Start a new session from Settings or a later Shortcut invocation after it ends. There is no automatic 24/7 renewal.
+An active Live Activity lasts **at most eight hours**, and people can dismiss it. Ended content can remain on the Lock Screen for up to four additional hours. Updating the same activity does not renew that limit. Start a new session from Settings or a later capture after it ends (provided the companion is enabled). There is no automatic 24/7 renewal.
 
 The Shortcut needs the persisted Worker configuration and network access. The Worker handles AI calls and quotas; it does not provide an offline model, reminder sync or APNs scheduling. Ambiguous or missing times remain **No time set** rather than being invented; a parsed time in the past is rejected. Alerts denied by iOS do not prevent saving, and the acknowledgement reports when alerts are unavailable. Completing or deleting a reminder cancels its pending/delivered notification.
 
