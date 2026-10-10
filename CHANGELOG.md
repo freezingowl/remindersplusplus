@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T00:16:11+05:30 — Backport ExpoModulesJSI Swift 6.2 compiler fix
+
+- Changed: Added `patch-package` and a fail-on-error `postinstall` hook to the package files; saved `patches/expo-modules-jsi+57.1.1.patch`, adapted from Expo's merged PR #51040, with retained static scheduler factories and an immutable sendable wrapper for synchronous host callbacks. Documented the workaround and SDK 57's official Xcode 26.4+ requirement in `README.md`.
+- Why: The installed Xcode 26.3/Swift 6.2.4 rejects retained annotations on the RuntimeScheduler constructors; the installed 57.1.1 package also contains the related pointer-capture compiler incompatibility. The fix is not yet published in the SDK 57 package range checked on npm.
+- Validation: `npm run typecheck`, `npm run lint`, `npm run postinstall`, and reverse patch applicability passed. The package's `build-xcframework.sh`, using this project's Pods and `PLATFORM_NAME=iphoneos`, successfully compiled the patched arm64 iOS framework with Xcode 26.3. Remaining output contained non-fatal JSI umbrella-header/linker warnings.
+- Limitations: Only the affected framework was compiled; a full signed app build, USB installation, runtime behavior, and ngrok tunnel remain unverified. SDK 57 officially requires Xcode 26.4+. Existing untracked `ios/` files and signing settings were preserved. Revisit this temporary patch after an SDK-compatible upstream release.
+
 ## 2026-10-10T23:30:56+05:30 — Add wired development-build and tunnel workflow
 
 - Changed: Added `expo-dev-client`, the project-local `@expo/ngrok` helper, device bundle identifiers, a development scheme, and scripts for building a wired iPhone development build and starting it through an explicit tunnel. Reworked the setup documentation around that workflow.

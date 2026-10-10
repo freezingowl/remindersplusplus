@@ -20,6 +20,7 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 
 - Node.js 24.3 or newer is recommended by the installed React Native version. The project bundled successfully with Node 24.2.0, but npm reports an engine warning on that version.
 - Expo Go or an iOS/Android simulator/device. A physical device is best for trying microphone recording and notifications; Xcode is required to compile a custom iOS development build.
+- [Expo SDK 57 officially requires Xcode 26.4 or newer](https://docs.expo.dev/versions/latest/). This project includes a temporary compatibility patch for the specific ExpoModulesJSI compiler errors on Xcode 26.3; that framework compiled successfully on 26.3, but a complete signed app build on that toolchain is not yet verified.
 - An OpenAI API key only if you want natural-language parsing and voice capture.
 
 ### Install a development build on a wired iPhone
@@ -42,6 +43,14 @@ npm run start:dev:tunnel
 Open the installed **Cue** development app on the iPhone, or scan the development-build QR code it prints. This project includes both `expo-dev-client` and the local `@expo/ngrok` helper, so this command targets your installed development build and uses a tunnel rather than Expo Go.
 
 For regular iteration after the first install, use the same `npm run start:dev:tunnel` command. TypeScript-only UI changes do not need another native build.
+
+#### ExpoModulesJSI compiler workaround
+
+If Xcode reports that `RuntimeScheduler` cannot use `SWIFT_RETURNS_RETAINED`, the installed `expo-modules-jsi@57.1.1` contains a known Swift 6.2 compatibility bug. `patches/expo-modules-jsi+57.1.1.patch` backports [Expo's merged fix #51040](https://github.com/expo/expo/pull/51040), including its related host-callback concurrency fix. It preserves ownership annotations by moving construction to static factories, rather than disabling compiler checks.
+
+`npm install` automatically applies the patch with `patch-package`; `npm run postinstall` reapplies it to an existing install. Keep the patch in version control. After applying it, stop any failed build and retry **Product → Build** in `ios/Cue.xcworkspace` or `npm run ios:build:device`. The framework build phase detects changed source files automatically; do not regenerate or delete the native project just for this error, as that can overwrite signing changes.
+
+This is a narrow workaround, not full support for SDK 57 on older Xcode. Once an SDK-compatible package release includes the upstream fix, remove this patch and revalidate the native build; do not independently jump `expo-modules-jsi` to another SDK's major version. Provisioning-profile errors and ngrok connection failures are separate from this compiler error.
 
 If ngrok reports that the tunnel cannot connect, stop any older Expo servers with `Ctrl+C`, run `npm install` once to ensure the local tunnel helper is present, and retry `npm run start:dev:tunnel`. A restrictive VPN, firewall, or public Wi-Fi can block ngrok; in that case use `npm run start:dev` while the phone and Mac share the same Wi-Fi.
 
@@ -106,6 +115,12 @@ On 10 October 2026:
 - `npm run typecheck` passed.
 - `npm run lint` passed with no warnings or errors.
 - `npx expo export --platform ios --output-dir /private/tmp/cue-ios-export` passed and produced an iOS JavaScript bundle.
+
+On 11 October 2026, after backporting the ExpoModulesJSI fix:
+
+- `npm run typecheck`, `npm run lint`, and `npm run postinstall` passed.
+- `git apply --check --reverse patches/expo-modules-jsi+57.1.1.patch` confirmed the installed sources match the patch.
+- The ExpoModulesJSI build script compiled the `iphoneos`/arm64 framework successfully with Xcode 26.3 (Swift 6.2.4). This verifies the affected framework, not the complete signed app, device installation, or tunnel.
 
 ## Known limitations
 

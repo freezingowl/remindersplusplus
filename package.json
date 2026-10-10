@@ -4,6 +4,7 @@
   "private": true,
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
+    "postinstall": "patch-package --error-on-fail",
     "start": "expo start --localhost",
     "start:lan": "expo start --lan",
     "start:tunnel": "expo start --tunnel",
@@ -38,6 +39,7 @@
     "@types/react": "~19.2.14",
     "eslint": "^9.39.1",
     "eslint-config-expo": "~57.0.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   }
 }
