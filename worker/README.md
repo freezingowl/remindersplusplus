@@ -50,9 +50,13 @@ npm run ios:build:standalone
 
 Native sync/prebuild embeds the Worker origin and separate Cue access token in the app's Info.plist. Shortcuts can read them without JavaScript having launched first; the OpenAI key is never embedded. Re-run native sync and rebuild/install whenever either value changes. Opening an older binary or reloading JavaScript cannot add these native settings.
 
-The Release command bundles the React Native screen and needs no Metro server or tunnel. Open the installed app to check its cloud connection and allow notifications before your first Shortcut test. A Debug development build still needs Metro for its React Native screen. Previously saved personal OpenAI keys are deleted during setup and never used by this code.
+The Release command bundles the React Native screen and needs no Metro server or tunnel. Open the installed app to check its cloud connection, allow Live Activities, and connect Calendar before your first Calendar Shortcut test. A Debug development build still needs Metro for its React Native screen. Previously saved personal OpenAI keys are deleted during setup and never used by this code.
 
 ## Add the Back Tap Shortcut
+
+Custom iPhone builds now use authenticated **POST /v1/assistant** for reminders, event creation/moving, Calendar questions and short answers. The legacy `/v1/reminders/parse` endpoint remains compatible with existing installed apps and Expo Go/Android. Both routes share the existing atomic `parse` quota (10/minute, 500/UTC day). The model returns a validated action; EventKit executes Calendar operations on the phone. No Calendar contents or query results are sent to OpenAI. A brief-answer hold prevents scheduled pushes from overwriting the response before it restores. Run `npm run cloud:check:assistant` for six synthetic routing tests; these consume six AI requests and perform no phone/Calendar writes.
+
+For the new action use **Ask for Input** or **Dictate Text → Cue → Ask Cue**, passing the input into **Request**, and connect Calendar in Cue Settings before assigning the Shortcut to Back Tap. Existing **Add Cue reminder** actions route through the same assistant in the new native build.
 
 On the iPhone:
 
@@ -61,7 +65,7 @@ On the iPhone:
 3. Add **Cue → Add Cue reminder**. Set **Reminder** to the **Provided Input** from the first action.
 4. Run it from Shortcuts once while unlocked. Then select it in **Settings → Accessibility → Touch → Back Tap → Double Tap** or **Triple Tap**.
 
-No HTTP action or secret is needed inside the Shortcut. The native Cue action calls the configured Worker, saves the reminder, schedules a local alert when permitted, shows processing/saved feedback in its Live Activity, and restores the due/upcoming reminder afterwards. Allow Cue notifications and Live Activities. The first in-app capture starts a session automatically; an explicit off setting in Cue is respected for in-app captures. The Shortcut explicitly starts/enables its companion session. Input/authentication while locked is controlled by iOS and requires device testing. An activity still lasts at most eight active hours; this backend does not add APNs scheduling or perpetual renewal.
+No HTTP action or secret is needed inside the Shortcut. The native Cue action calls the configured Worker, executes the request, shows processing/answer/saved feedback in its Live Activity, and restores the next event or reminder. The custom iPhone flow schedules no local alerts. Allow Live Activities. The first in-app capture starts a session automatically; an explicit off setting in Cue is respected for in-app captures. The Shortcut explicitly starts/enables its companion session. Input/authentication while locked is controlled by iOS and requires device testing. An activity still lasts at most eight active hours; unattended updates need [APNS.md](APNS.md), and there is no perpetual renewal.
 
 ## Model and limits
 
@@ -84,7 +88,7 @@ AI requests do not store text/audio in D1 or logs. The optional APNs scheduler s
 
 - Start with the readiness check and sushi parser test above, then follow [TESTING.md](../TESTING.md) for installation, permission checks, in-app capture and Back Tap in that order. **Check cloud connection** in Cue Settings uses authenticated `GET /v1/status`; it checks configuration/token/schema, not OpenAI key validity or model access.
 - In Cue, submit **“Remind me to drink water in two minutes.”** Check the time. For custom iPhone builds, follow [APNS.md](APNS.md) to check the same Live Activity at the deadline; no local alert is scheduled. Expo Go/Android retain local notifications.
-- Run **Add to Cue** while unlocked with another clear task/time. Check **Adding reminder… → Added… → original due/upcoming task** on the Live Activity. Reopen Cue and check the new reminder is in the list.
+- Run **Ask Cue** while unlocked with another clear task/time. Check **Thinking… → Added… → next event/reminder** on the Live Activity. Reopen Cue and check the new reminder is in the list.
 - Try one microphone reminder. Check transcription and the resulting date/time. This uses one voice request and one text request.
 - Check ambiguous input such as **“Remind me about the meeting today.”** It should remain **No time set** rather than inventing an hour. AI extraction is probabilistic: review parsed times, including AM/PM and timezone boundaries.
 - Disconnect the network and try adding a reminder. Cue must show an error and retain your typed input; it must not fabricate a successful untimed reminder.

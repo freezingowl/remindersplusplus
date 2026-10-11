@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { calendarStatus, setCalendarConnected } from "../lib/companion";
 import { checkCloudConnection } from "../lib/cloud";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -40,6 +41,17 @@ export function SettingsSheet({
 }: SettingsSheetProps) {
   const [checking, setChecking] = useState(false);
   const [connection, setConnection] = useState("");
+  const [calendarConnected, setCalendarIsConnected] = useState(false);
+  const [calendarBusy, setCalendarBusy] = useState(false);
+  useEffect(() => {
+    if (visible && companionAvailable) void calendarStatus().then((status) => setCalendarIsConnected(status.connected)).catch(() => setCalendarIsConnected(false));
+  }, [visible, companionAvailable]);
+  async function connectCalendar(connected: boolean): Promise<void> {
+    setCalendarBusy(true);
+    try { setCalendarIsConnected((await setCalendarConnected(connected)).connected); }
+    catch (error) { Alert.alert("Calendar access", error instanceof Error ? error.message : "Open iPhone Settings to allow Calendar access."); }
+    finally { setCalendarBusy(false); }
+  }
   async function checkConnection(): Promise<void> {
     setChecking(true);
     try {
@@ -84,7 +96,7 @@ export function SettingsSheet({
               <Text style={styles.securityText}>One quiet card for this session, up to 8 hours.</Text>
               <Pressable accessibilityRole="button" onPress={() => Alert.alert(
                 "Add Cue to Back Tap",
-                "Install the latest Cue build and check its cloud connection in Settings first. In Shortcuts, create a shortcut with Ask for Input (Text), then Cue → Add Cue reminder. Pass the input into Reminder. In iPhone Settings → Accessibility → Touch → Back Tap, choose that shortcut for Double Tap or Triple Tap. Try it while unlocked first.",
+                "In Shortcuts, use Ask for Input (Text) or Dictate Text, then Cue → Ask Cue. Pass the input into Request. Your existing Add Cue reminder action also accepts questions and Calendar requests after updating Cue. In iPhone Settings → Accessibility → Touch → Back Tap, choose your shortcut for Double Tap or Triple Tap. Connect Apple Calendar in Cue Settings first for events and free-time questions. Try it while unlocked first.",
                 [{ text: "Close", style: "cancel" }, { text: "Open Shortcuts", onPress: () => { void Linking.openURL("shortcuts://").catch(() => Alert.alert("Open Shortcuts", "Open the Shortcuts app on your iPhone.")); } }],
               )} style={styles.shortcutButton}>
                 <Text style={styles.shortcutText}>Set up Back Tap</Text>
@@ -95,6 +107,18 @@ export function SettingsSheet({
 
           {companionAvailable && companionActive && companionPushStatus ? <Text style={styles.securityText}>{companionPushStatus}</Text> : null}
 
+          {companionAvailable ? <View style={styles.companion}>
+            <View style={styles.companionRow}>
+              <Text style={styles.companionTitle}>Apple Calendar</Text>
+              {calendarConnected ? <Switch accessibilityLabel="Apple Calendar access" disabled={calendarBusy} value onValueChange={(enabled) => void connectCalendar(enabled)} /> : null}
+            </View>
+            <Text style={styles.securityText}>Read your events, find free time, and add or move events when you ask. Answers appear briefly on your Lock Screen, then your next event or reminder returns.</Text>
+            <Text style={styles.securityText}>Calendar contents are read on your iPhone. Your request goes to cloud AI; upcoming event titles and times join the companion’s temporary push schedule.</Text>
+            {!calendarConnected ? <Pressable accessibilityRole="button" disabled={calendarBusy} onPress={() => void connectCalendar(true)} style={styles.shortcutButton}>
+              <Text style={styles.shortcutText}>{calendarBusy ? "Connecting…" : "Connect Apple Calendar"}</Text>
+            </Pressable> : <Text style={styles.securityText}>Connected. You can revoke permission in iPhone Settings.</Text>}
+          </View> : null}
+
           <Text style={styles.description}>
             {cloudConfigured ? "Cloud settings are installed. Check the connection before your first reminder." : "Cloud AI hasn’t been configured in this build yet."}
           </Text>
@@ -102,7 +126,7 @@ export function SettingsSheet({
             <Text style={styles.shortcutText}>{checking ? "Checking connection…" : "Check cloud connection"}</Text>
           </Pressable>
           {connection ? <Text accessibilityLiveRegion="polite" style={styles.securityText}>{connection}</Text> : null}
-          <Text style={styles.securityText}>An internet connection is needed to add reminders.</Text>
+          <Text style={styles.securityText}>An internet connection is needed to understand your requests.</Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>

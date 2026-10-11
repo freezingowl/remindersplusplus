@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const xcode = require("xcode");
 const plist = require("@expo/plist").default;
-const { configureProject, copySources, applyCloudConfiguration, cloudEnvironment } = require("../plugins/withCueCompanion.cjs");
+const { configureProject, copySources, applyCloudConfiguration, cloudEnvironment, calendarUsageDescription } = require("../plugins/withCueCompanion.cjs");
 
 const root = path.dirname(require.resolve("../package.json"));
 const config = require("../app.json").expo;
@@ -18,6 +18,7 @@ copySources(root, ios);
 const infoPath = path.join(ios, "Cue/Info.plist");
 const info = plist.parse(fs.readFileSync(infoPath, "utf8"));
 info.NSSupportsLiveActivities = true;
+info.NSCalendarsFullAccessUsageDescription = calendarUsageDescription;
 applyCloudConfiguration(info, cloudEnvironment(root));
 const pushEnvironment = cloudEnvironment(root).CUE_APNS_ENVIRONMENT ?? "development";
 if (!["development", "production"].includes(pushEnvironment)) throw new Error("CUE_APNS_ENVIRONMENT must be development or production.");

@@ -24,7 +24,7 @@ async function checkCloud({ origin, token, parse = false, pushTransport = false,
   const status = await request("/v1/status");
   if (status?.ok !== true) throw new Error("Worker returned an invalid connection status.");
   if (pushTransport) return { connected: true, liveActivity: status.liveActivity ?? null, pushTransport: await request("/v1/push-transport") };
-  if (!parse) return { connected: true, liveActivity: status.liveActivity ?? null };
+  if (!parse) return { connected: true, assistant: status.assistant === true, liveActivity: status.liveActivity ?? null };
   const start = Date.now();
   const result = await request("/v1/reminders/parse", {
     method: "POST", headers: { ...headers, "Content-Type": "application/json" },

@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 import { LiquidSurface } from "./LiquidSurface";
 
 type ComposerProps = {
+  assistantAvailable?: boolean;
   value: string;
   isRecording: boolean;
   isProcessing: boolean;
@@ -13,6 +14,7 @@ type ComposerProps = {
 };
 
 export function Composer({
+  assistantAvailable = false,
   value,
   isRecording,
   isProcessing,
@@ -30,7 +32,7 @@ export function Composer({
           <Text style={styles.listeningText}>Listening — tap the mic when you&apos;re done</Text>
         </View>
       ) : (
-        <Text style={styles.prompt}>Add a reminder</Text>
+        <Text style={styles.prompt}>{assistantAvailable ? "Ask Cue or add something" : "Add a reminder"}</Text>
       )}
 
       <LiquidSurface
@@ -39,7 +41,7 @@ export function Composer({
         tintColor={isRecording ? "rgba(255, 107, 91, 0.18)" : undefined}
       >
         <Pressable
-          accessibilityLabel={isRecording ? "Stop recording" : "Record a reminder"}
+          accessibilityLabel={isRecording ? "Stop recording" : assistantAvailable ? "Speak to Cue" : "Record a reminder"}
           accessibilityRole="button"
           hitSlop={8}
           onPress={onVoicePress}
@@ -53,13 +55,13 @@ export function Composer({
         </Pressable>
 
         <TextInput
-          accessibilityLabel="New reminder"
+          accessibilityLabel={assistantAvailable ? "Ask Cue, add a reminder or schedule an event" : "New reminder"}
           blurOnSubmit={false}
           editable={!isProcessing && !isRecording}
           multiline
           onChangeText={onChangeText}
           onSubmitEditing={hasText ? onSubmit : undefined}
-          placeholder="What do you need to remember?"
+          placeholder={assistantAvailable ? "When am I free tomorrow?" : "What do you need to remember?"}
           placeholderTextColor="#9B9AA3"
           returnKeyType="done"
           style={styles.input}
@@ -67,7 +69,7 @@ export function Composer({
         />
 
         <Pressable
-          accessibilityLabel="Add reminder"
+          accessibilityLabel={assistantAvailable ? "Send request to Cue" : "Add reminder"}
           accessibilityRole="button"
           disabled={!hasText || isProcessing || isRecording}
           onPress={onSubmit}
@@ -85,7 +87,7 @@ export function Composer({
         </Pressable>
       </LiquidSurface>
 
-      <Text style={styles.example}>Try “Call Mum tomorrow at 8.”</Text>
+      <Text style={styles.example}>{assistantAvailable ? "Try “Schedule lunch tomorrow at 1 PM.”" : "Try “Call Mum tomorrow at 8 PM.”"}</Text>
     </View>
   );
 }

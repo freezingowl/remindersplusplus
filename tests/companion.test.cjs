@@ -46,7 +46,7 @@ test("native plugin survives repeated prebuilds and preserves app signing/versio
     assert.match(settings.SWIFT_ACTIVE_COMPILATION_CONDITIONS, /CUE_WIDGET_EXTENSION/);
   }
   const sources = (target) => project.pbxSourcesBuildPhaseObj(target).files.map(({ value }) => objects.PBXBuildFile[value].fileRef_comment).sort();
-  assert.deepEqual(sources("APP"), ["CueActivityAttributes.swift", "CueCompanionBridge.m", "CueCompanionBridge.swift", "CueCompanionService.swift", "CueIntents.swift", "CueReminderModel.swift"]);
+  assert.deepEqual(sources("APP"), ["CueActivityAttributes.swift", "CueCalendarService.swift", "CueCompanionBridge.m", "CueCompanionBridge.swift", "CueCompanionService.swift", "CueIntents.swift", "CueReminderModel.swift"]);
   assert.deepEqual(sources(widget[0]), ["CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift", "CueReminderModel.swift"]);
   assert.equal(objects.PBXNativeTarget.APP.dependencies.length, 1);
   const embedding = project.pbxCopyfilesBuildPhaseObj("APP");
@@ -65,6 +65,7 @@ test("native selection prioritizes the newest due task and retains missed remind
   assert.ifError(run.error);
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /17 selection scenarios passed/);
+  assert.match(run.stdout, /12 Calendar and availability scenarios passed/);
 });
 
 test("native build embeds only validated Cue settings and clears obsolete values", () => {

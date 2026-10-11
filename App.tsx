@@ -99,7 +99,7 @@ export default function App() {
     }
 
     setToast(message);
-    toastTimer.current = setTimeout(() => setToast(""), 3600);
+    toastTimer.current = setTimeout(() => setToast(""), message.includes("\n") ? 8000 : 3600);
   }
 
   useEffect(() => {
@@ -187,13 +187,12 @@ export default function App() {
     if (hasCompanion) {
       try {
         const saved = await captureWithCompanion(text, source);
-        setReminders(saved);
+        setReminders(saved.reminders);
         setInput("");
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        const added = saved[0];
-        showToast(added?.dueAt ? "Reminder saved to Cue." : "Reminder saved. No time set.");
+        showToast(saved.reply);
       } catch (error) {
-        Alert.alert("Couldn’t add reminder", error instanceof Error ? error.message : "Please try again.");
+        Alert.alert("Couldn’t complete request", error instanceof Error ? error.message : "Please try again.");
       } finally {
         setIsCreating(false);
       }
@@ -258,7 +257,7 @@ export default function App() {
         throw new Error("No audio was captured.");
       }
 
-      showToast("Turning your voice into a reminder…");
+      showToast(hasCompanion ? "Understanding your request…" : "Turning your voice into a reminder…");
       const transcript = await transcribeReminderAudio(uri);
       await createReminder(transcript, "voice");
     } catch (error) {
@@ -419,6 +418,7 @@ export default function App() {
         ) : null}
 
         <Composer
+          assistantAvailable={hasCompanion}
           isProcessing={isProcessing || !isReady}
           isRecording={recorderState.isRecording}
           onChangeText={setInput}

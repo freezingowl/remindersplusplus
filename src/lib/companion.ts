@@ -3,6 +3,7 @@ import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import type { Reminder, ReminderSource } from "../types";
 
 export type CompanionStatus = { enabled: boolean; allowed: boolean; active: boolean; pushStatus?: string };
+export type CalendarStatus = { connected: boolean; authorization: string };
 
 type CompanionModule = {
   getReminders(): Promise<string | null>;
@@ -12,6 +13,9 @@ type CompanionModule = {
   getStatus(): Promise<CompanionStatus>;
   setEnabled(enabled: boolean): Promise<CompanionStatus>;
   capture(text: string, source: ReminderSource): Promise<string>;
+  ask(text: string, source: ReminderSource): Promise<{ remindersJSON: string; reply: string }>;
+  getCalendarStatus(): Promise<CalendarStatus>;
+  setCalendarConnected(connected: boolean): Promise<CalendarStatus>;
   toggle(id: string, completed: boolean): Promise<string>;
   remove(id: string): Promise<string>;
   refresh(): Promise<void>;
@@ -60,8 +64,23 @@ export async function setCompanionEnabled(enabled: boolean): Promise<CompanionSt
   return module().setEnabled(enabled);
 }
 
-export async function captureWithCompanion(text: string, source: ReminderSource): Promise<Reminder[]> {
-  return remindersFromJSON(await module().capture(text, source));
+export async function captureWithCompanion(text: string, source: ReminderSource): Promise<{ reminders: Reminder[]; reply: string }> {
+  const companion = module();
+  if (typeof companion.ask !== "function") throw new Error("Rebuild and install Cue to enable Calendar and questions.");
+  const result = await companion.ask(text, source);
+  return { reminders: remindersFromJSON(result.remindersJSON), reply: result.reply };
+}
+
+export async function calendarStatus(): Promise<CalendarStatus> {
+  const companion = module();
+  if (typeof companion.getCalendarStatus !== "function") return { connected: false, authorization: "upgrade" };
+  return companion.getCalendarStatus();
+}
+
+export async function setCalendarConnected(connected: boolean): Promise<CalendarStatus> {
+  const companion = module();
+  if (typeof companion.setCalendarConnected !== "function") throw new Error("Rebuild and install Cue to connect Apple Calendar.");
+  return companion.setCalendarConnected(connected);
 }
 
 export async function toggleWithCompanion(id: string, completed: boolean): Promise<Reminder[]> {

@@ -15,6 +15,29 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 - Routes all AI calls through a rate-limited Cloudflare Worker; the OpenAI key stays in Cloudflare Secrets.
 - Adds a minimal native Lock Screen companion and a quiet Shortcuts action in custom iPhone builds: tiny face mark, processing/added feedback, one due/upcoming reminder and a tappable missed badge.
 - Includes a Worker/APNs deadline scheduler for the same activity; Apple signing-key setup and a new native build are required. See [worker/APNS.md](worker/APNS.md).
+- In custom iPhone builds, understands questions, reminders, Calendar additions and moving a single event through the same typed, spoken or Back Tap request. Calendar answers appear on the Live Activity for about eight seconds, then the next reminder or Calendar event returns.
+
+## Apple Calendar and Ask Cue
+
+After installing the new native build, open **Settings → Connect Apple Calendar** and grant **full access**. [Apple EventKit](https://developer.apple.com/documentation/eventkit/accessing-the-event-store) requires this permission to read existing events; write-only access cannot answer availability questions. Cue reads all calendars synced to the device and creates new events in the writable default Calendar. Disconnecting in Cue stops reads/writes; revoke the system permission in iPhone Settings if desired.
+
+Examples through the composer, microphone or **Cue → Ask Cue** in Shortcuts:
+
+- “Remind me to make sushi in two minutes” saves a normal Cue reminder.
+- “Add a Calendar event for lunch tomorrow at 1 PM for 30 minutes” writes the event.
+- “What events are coming up day after tomorrow?” reads that local day's events.
+- “When am I free two days from now?” reports gaps between 9 AM and 6 PM by default, or uses the hours you specify.
+- “Move my lunch event tomorrow to 2 PM tomorrow” moves one matching occurrence. Include the original date/time if there are multiple matches.
+
+The original **Add Cue reminder** Shortcut remains available and accepts the same requests after the native update. Back Tap assignment remains in iPhone Settings; use **Ask for Input** or **Dictate Text → Ask Cue**, passing the input into **Request**. Calendar permission is requested in the app first, never during a background Shortcut. Apple's input/authentication UI still applies.
+
+The AI interprets one request into a validated action. Calendar contents remain on the iPhone: EventKit reads the requested window and native interval arithmetic calculates free time, including overlaps and busy all-day events. Events explicitly marked free and declined invitations do not block availability. The cloud receives your request, not the Calendar query results. With push scheduling, a bounded queue also includes upcoming event titles/start/end times; it expires with the companion session. The same Activity shows a brief response and restores the next item. Due reminders retain priority; Calendar events stay current until their end and do not become missed tasks.
+
+Limits: one action/request, query windows up to 31 days/500 events, explicit event start time, one-hour default duration when omitted, and additions up to one year ahead. Vague dates ask for clarification without creating anything. Moving an event with guests directs you to Calendar to review invitations. No event deletion, invitation management, new recurring-series creation, or conversational follow-up memory is implemented. Full Calendar answers work in the rebuilt native iPhone app; Expo Go/Android retain reminders. External Calendar edits refresh while Cue runs or when it next opens/handles a request; a suspended phone app cannot stream EventKit changes to the server. APNs setup remains required for unattended multi-step transitions and Apple limits each Activity to eight active hours.
+
+Deploy the updated Worker, then sync/build as described below. `npm run cloud:check:assistant` makes six synthetic paid AI calls to verify routing/times without touching a phone or Calendar. Physical permission, EventKit writes and the rendered eight-second answer still require device validation; an unsigned build does not establish those results.
+
+Branch status (11 October 2026, 06:54 IST): automated checks and the unsigned Release app/widget build pass; the Worker is packaged locally. Live deployment was blocked by automatic approval review and needs explicit user approval. Readiness confirms the existing deployed backend is healthy but does not yet expose the assistant, and the three Apple push secrets are still missing. Do not install this branch expecting Calendar requests to work until its Worker is deployed. The new six-case live AI check has not been run.
 
 ## Run the app
 
@@ -132,7 +155,7 @@ For a new installation, follow [TESTING.md](TESTING.md). A prior signed CLI atte
 
 The card uses the system's default translucent Lock Screen background, allowing iOS to choose its native appearance. It does not put an opaque colored panel over that surface or assume the app-only `glassEffect` modifier works inside a widget. Actual Liquid Glass appearance depends on the OS and needs device review.
 
-With nothing upcoming, the card collapses to the small face and “cue” mark, retaining a missed badge when needed. Capture shows **Adding reminder…**, then briefly **Added: [task]** and its time, then restores the current due or earliest upcoming task. The latest newly due reminder takes priority. An unfinished reminder becomes missed when a newer due task replaces it or after its one-minute NOW window. Tap **1 missed** to review it on the same card, tap again to cycle missed tasks, or tap **Back** to resume. Completion removes it from the missed count. A newer deadline interrupts missed review. Opening Cue synchronizes all Shortcut-created tasks and completion states into the existing list; nothing is deleted when missed.
+With nothing upcoming, the card collapses to the small face and “cue” mark, retaining a missed badge when needed. Capture shows **Thinking…**, then briefly **Added: [task]** and its time, then restores the current due or earliest upcoming task/event. Questions show an eight-second answer instead. The latest newly due reminder takes priority. An unfinished reminder becomes missed when a newer due task replaces it or after its one-minute NOW window. Tap **1 missed** to review it on the same card, tap again to cycle missed tasks, or tap **Back** to resume. Completion removes it from the missed count. A newer deadline interrupts missed review. Opening Cue synchronizes all Shortcut-created tasks and completion states into the existing list; nothing is deleted when missed.
 
 While Cue is active, a foreground deadline task refreshes the card. When it is suspended, the Worker schedules Durable Object alarms and sends ActivityKit push updates at due times and missed transitions. These update the existing activity with no alert/sound payload. Native registration tracks token changes, replaces the open queue after mutations and uses increasing revisions to reject late writes. The snapshot also preloads one next transition via `staleDate` as a limited fallback; it is not a general scheduler. [Apple explicitly does not guarantee Background Refresh execution at a requested date](https://developer.apple.com/documentation/backgroundtasks/bgtaskrequest/earliestbegindate). APNs connectivity/budgets also prevent hard real-time guarantees. Follow [worker/APNS.md](worker/APNS.md) to configure Apple credentials and verify real delivery; fake-key runtime tests do not establish device delivery.
 
@@ -201,7 +224,7 @@ The latest Live Activity-only update passed 18 Worker scenarios, five scheduler/
 
 ## Known limitations
 
-- The prototype does not yet offer editing, recurring reminders, categories, sync, or sign-in.
+- The prototype does not yet offer reminder editing, recurring reminder creation, categories, Cue account/device sync, or sign-in. Apple Calendar supports creating events and moving one unambiguous occurrence.
 - Expo Go/Android local alerts depend on device permission and operating-system scheduling policy; the custom iPhone build uses Live Activity only.
 - Adding typed/spoken reminders needs network access and a configured Worker; viewing/completing existing reminders remains local.
 - The private demo uses a shared Cue access token and global quotas. Public distribution needs real user authentication/per-user limits; the shared token is extractable from the client. No reminder cloud sync exists.

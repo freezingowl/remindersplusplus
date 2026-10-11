@@ -27,7 +27,8 @@
     "test:worker:runtime": "node --test tests/worker.runtime.test.mjs",
     "test:activity": "node --test tests/live-activity.test.mjs",
     "ios:build:standalone": "expo run:ios --device --configuration Release --no-bundler",
-    "cloud:check": "node scripts/checkCloud.cjs"
+    "cloud:check": "node scripts/checkCloud.cjs",
+    "cloud:check:assistant": "node scripts/checkAssistant.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

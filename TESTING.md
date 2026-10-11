@@ -1,5 +1,22 @@
 # Test Cue from cloud setup to Back Tap
 
+## Calendar assistant branch
+
+The `feat/calendar-assistant` build adds **Ask Cue** while preserving the existing reminder Shortcut. Deploy the current Worker, sync/build/install Cue, then enable **Settings → Connect Apple Calendar → Full access**. The permission is a phone step; Mac compilation cannot grant it.
+
+Test these unlocked first through Cue, then through Back Tap:
+
+1. “Remind me to make sushi in two minutes”: one Cue card, unchanged elapsed deadline and missed behavior.
+2. “Add a Calendar event called Cue calendar test tomorrow at 2 PM for 30 minutes”: inspect Apple Calendar for one correctly timed event. Repeat once: the duplicate guard should report it already exists.
+3. “What events are coming up day after tomorrow?”: compare the brief Activity answer with Apple Calendar. Confirm no Cue reminder was added by the question.
+4. “When am I free two days from now?”: compare gaps against overlapping and busy all-day events; unspecified hours mean 9 AM–6 PM. Deny/revoke permission and verify it requests access rather than claiming the day is free.
+5. “Move my Cue calendar test event tomorrow to 4 PM tomorrow”: inspect the moved occurrence. Try two matching events and confirm it asks which one without moving either.
+6. Watch the answer for about eight seconds and confirm the next event/reminder returns. While an event is in progress, the card has no reminder completion circle and the event leaves the timeline at its end. Reopen Cue after editing events elsewhere to refresh the saved push snapshot.
+
+`npm run cloud:check:assistant` verifies six synthetic AI request plans without reading/writing your phone Calendar. It is a paid backend check, not proof of EventKit/device behavior. Questions use fresh local Calendar data at execution. Unattended transitions require the separate APNs configuration in [worker/APNS.md](worker/APNS.md), which still needs Apple keys. Existing native Activity snapshots decode across this upgrade; restarting the companion after installation gives it the new event queue.
+
+Verified at 06:54 IST: 22 Worker tests, seven scheduler tests, two real runtime tests, three companion checks (including 12 new Calendar/free-time scenarios), four path checks, typecheck/lint, native packaging and unsigned Release app/widget compilation passed. Dry-run Worker packaging passed. Automatic approval review blocked production deployment; the existing backend reports `assistant:false`, so deployment and the six live AI cases remain pending. No actual phone Calendar data was accessed or modified.
+
 The screenshot's **“Cloud AI isn’t configured”** error occurred in the native Shortcut before any AI request. The new build embeds the Cue Worker origin/access token, so the Shortcut no longer relies on JavaScript opening once to save them. An older installed binary does not gain this fix from a JavaScript reload: rebuild and install it.
 
 **This local checkout's server setup is complete as of 11 October 2026, 04:58 IST.** The deployed Worker has the D1 binding/schema and matching Cue token; authenticated readiness passed. The exact sushi sentence returned **Make sushi** with a deadline two minutes ahead in **2.524 seconds**. Written-out duration, explicit local time and ambiguous input also passed. Start at **step 3** to install and test on your phone. Steps 1–2 remain here for a fresh deployment or troubleshooting. Backend checks do not create reminders on the phone.
@@ -64,7 +81,7 @@ Type exactly:
 Submit once. Expect:
 
 - A **Make sushi** reminder in Cue with a future due time about two minutes from submission.
-- The Live Activity shows **Adding reminder…**, then **Added: Make sushi** with the time, then the due/upcoming reminder. In-app captures respect an explicitly disabled companion; enable it in Settings if needed.
+- The Live Activity shows **Thinking…**, then **Added: Make sushi** with the time, then the due/upcoming reminder or Calendar event. In-app captures respect an explicitly disabled companion; enable it in Settings if needed.
 - No **Cloud AI isn’t configured** error and no newly saved untimed placeholder.
 
 Lock the phone and wait about two minutes. With APNs configured and its schedule registered, the Worker updates this same card to **NOW**, without a notification banner/sound. After one minute unfinished, the task appears in the missed badge. Foreground updates work while Cue is active; the preloaded stale snapshot supplies only one fallback transition. Without Apple push setup, do not assume all future changes happen while Cue is suspended.

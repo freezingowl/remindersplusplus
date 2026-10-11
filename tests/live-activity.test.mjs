@@ -28,6 +28,38 @@ function fakeApple() {
     APNS_PRIVATE_KEY: privateKey.export({ type: "pkcs8", format: "pem" }),
     APNS_ENVIRONMENT: "development", APNS_BUNDLE_ID: "com.example.cue" } };
 }
+
+test("Calendar events stay active until they end and do not become missed reminders", () => {
+  const input = schedule({ reminders: [
+    { id: "cal_first", title: "Lunch", dueAt: START + 120_000, endAt: START + 600_000, createdAt: START },
+    { id: "cal_second", title: "Walk", dueAt: START + 1200_000, endAt: START + 2400_000, createdAt: START },
+  ] });
+  assert.equal(activityPayload(input, START).aps["content-state"].phase, "event");
+  assert.equal(activityPayload(input, START + 300_000).aps["content-state"].phase, "event_now");
+  assert.equal(activityPayload(input, START + 300_000).aps["stale-date"], (START + 600_000) / 1000);
+  assert.equal(activityPayload(input, START + 600_000).aps["content-state"].reminderID, "cal_second");
+  assert.equal(activityPayload(input, START + 2500_000).aps["content-state"].missedCount, 0);
+  input.reminders.push({ id: "due", title: "Water", dueAt: START + 300_000, createdAt: START });
+  assert.equal(activityPayload(input, START + 300_000).aps["content-state"].reminderID, "due");
+});
+
+test("an answer hold defers deadline pushes so the brief response stays visible", async (t) => {
+  const oldNow = Date.now;
+  let now = START;
+  Date.now = () => now;
+  t.after(() => { Date.now = oldNow; });
+  const ctx = context();
+  const object = new CueActivityScheduler(ctx, fakeApple().env);
+  const holdUntil = START + 15_000;
+  await sync(object, schedule({ holdUntil, reminders: [{ id: "now", title: "Now", dueAt: START + 1000, createdAt: START }] }));
+  assert.equal(await ctx.storage.getAlarm(), holdUntil);
+  now = START + 2000;
+  await object.alarm(); // No APNs call or credential signing while the answer is on screen.
+  assert.equal(await ctx.storage.get("authorization"), undefined);
+  assert.equal(await ctx.storage.getAlarm(), holdUntil);
+  await sync(object, schedule({ revision: 2, reminders: [] }));
+  assert.equal((await ctx.storage.get("schedule")).holdUntil, undefined);
+});
 function sync(object, input) { return object.fetch(new Request("https://cue.internal/sync", { method: "POST", body: JSON.stringify(input) })); }
 
 test("same activity advances at two and three minutes, then counts unfinished tasks as missed", () => {
