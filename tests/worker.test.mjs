@@ -92,6 +92,126 @@ test("APNs transport check uses deliberately invalid credentials and never the p
 
 async function code(response) { return (await response.json()).error?.code; }
 
+const assistantPlan = (overrides = {}) => ({ action: "answer", title: "", note: "", dueAt: "", delay: null,
+  startAt: "", endAt: "", allDay: false, searchTitle: "", rangeStart: "", rangeEnd: "", queryKind: "agenda", reply: "Hello!", ...overrides });
+function assistantRequest(text = "When am I free day after tomorrow?", accessToken = TOKEN) {
+  return new Request("https://cue.example/v1/assistant", { method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ text, timeZone: "Asia/Kolkata" }) });
+}
+
+test("assistant distinguishes questions from writes and uses the existing atomic AI quota", async (t) => {
+  const query = assistantPlan({ action: "query_calendar", queryKind: "availability", reply: "",
+    rangeStart: "2026-10-13T09:00:00+05:30", rangeEnd: "2026-10-13T18:00:00+05:30" });
+  const f = fixture(t, { upstream: async () => Response.json(completion(query)) });
+  assert.equal((await f.worker.fetch(assistantRequest(undefined, "incorrect"), f.env)).status, 401);
+  assert.equal(f.calls.length, 0);
+  const response = await f.worker.fetch(assistantRequest(), f.env);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).plan, query);
+  assert.equal(f.db.row().minute_count, 1);
+  const body = JSON.parse(f.calls[0].options.body);
+  assert.equal(body.store, false);
+  assert.equal(body.text.format.strict, true);
+  assert.equal(body.reasoning.effort, "low");
+  assert.equal(body.max_output_tokens, 2048);
+  assert.match(body.input[0].content, /Never ask the user a follow-up/);
+  assert.match(body.input[0].content, /bare hour 1–7 means PM, 8–11 means AM/);
+  assert.match(body.input[0].content, /next occurrence of that local clock time/);
+  assert.match(body.input[0].content, /next whole LOCAL hour/);
+  assert.doesNotMatch(body.input[0].content, /ask for the missing detail|require clarification/);
+  assert.match(body.input[0].content, /Never create a task from a question/);
+  assert.match(body.input[0].content, /day after tomorrow/);
+  assert.match(body.input[0].content, /LOCAL/);
+  const results = await Promise.all(Array.from({ length: 10 }, () => f.worker.fetch(assistantRequest(), f.env)));
+  assert.equal(results.filter((result) => result.status === 429).length, 1);
+});
+
+test("assistant preserves server timing for reminder captures and validates event writes", async (t) => {
+  const cases = [
+    assistantPlan({ action: "reminder", title: "Make sushi", reply: "", delay: { amount: 2, unit: "minutes" } }),
+    assistantPlan({ action: "create_event", title: "Lunch", reply: "", startAt: DUE, endAt: "2026-10-12T21:00:00+05:30" }),
+    assistantPlan({ action: "update_event", reply: "", searchTitle: "Lunch", startAt: DUE,
+      rangeStart: "2026-10-12T00:00:00+05:30", rangeEnd: "2026-10-13T00:00:00+05:30" }),
+  ];
+  for (const plan of cases) {
+    const f = fixture(t, { upstream: async () => Response.json(completion(plan)) });
+    const response = await f.worker.fetch(assistantRequest(), f.env);
+    assert.equal(response.status, 200);
+    const result = (await response.json()).plan;
+    if (plan.action === "reminder") assert.equal(Date.parse(result.dueAt), START + 120_000);
+    else assert.equal(result.action, plan.action);
+  }
+});
+
+test("assistant refuses invalid ranges, malformed write fields, impossible dates and unsupported operations", async (t) => {
+  const invalid = [
+    assistantPlan({ action: "delete_event" }),
+    assistantPlan({ action: "answer", reply: "" }),
+    assistantPlan({ action: "create_event", title: "Lunch", startAt: "tomorrow" }),
+    assistantPlan({ action: "create_event", title: "Lunch", startAt: "2027-02-30T12:00:00Z" }),
+    assistantPlan({ action: "create_event", title: "Lunch", startAt: DUE, endAt: "2026-10-12T19:00:00+05:30" }),
+    assistantPlan({ action: "create_event", title: "", startAt: DUE }),
+    assistantPlan({ action: "update_event", searchTitle: "", startAt: DUE }),
+    assistantPlan({ action: "query_calendar", rangeStart: DUE, rangeEnd: "2026-12-12T20:00:00+05:30" }),
+    assistantPlan({ action: "query_calendar", rangeStart: DUE, rangeEnd: DUE }),
+    assistantPlan({ action: "query_calendar", rangeStart: "2026-10-12T00:00:00", rangeEnd: "2026-10-13T00:00:00" }),
+  ];
+  for (const plan of invalid) {
+    const f = fixture(t, { upstream: async () => Response.json(completion(plan)) });
+    assert.equal(await code(await f.worker.fetch(assistantRequest(), f.env)), "invalid_action", JSON.stringify(plan));
+  }
+  const past = fixture(t, { upstream: async () => Response.json(completion(assistantPlan({ action: "create_event", title: "Lunch", startAt: "2026-10-10T12:00:00Z" }))) });
+  assert.equal(await code(await past.worker.fetch(assistantRequest(), past.env)), "past_time");
+});
+
+test("assistant preflight stops before paid calls when the deployed Worker lacks the new route", async () => {
+  const { checkAssistant } = await import("../scripts/checkAssistant.cjs");
+  const calls = [];
+  await assert.rejects(checkAssistant({ origin: "https://cue.example", token: TOKEN, fetchImpl: async (url) => {
+    calls.push(url);
+    return Response.json({ ok: true });
+  } }), /Deploy the current Worker/);
+  assert.deepEqual(calls, ["https://cue.example/v1/status"]);
+});
+
+test("assistant suppresses model follow-up questions without inventing a successful write", async (t) => {
+  for (const reply of ["What date is the meeting at 6? And do you mean 6 AM or 6 PM?", "Please specify the date", "Tell me the start time", "Is that tomorrow？"]) {
+    const f = fixture(t, { upstream: async () => Response.json(completion(assistantPlan({ reply }))) });
+    const result = (await (await f.worker.fetch(assistantRequest("Meeting at 6"), f.env)).json()).plan;
+    assert.equal(result.action, "answer");
+    assert.equal(result.reply, "I couldn’t complete that request. Nothing was changed.");
+    assert.equal(f.calls.length, 1);
+  }
+});
+
+test("assistant accepts inferred schedules while retaining explicit dates and reminder arithmetic", async (t) => {
+  for (const [text, plan] of [
+    ["Meeting at 6", assistantPlan({ action: "create_event", title: "Meeting", reply: "", startAt: "2026-10-11T18:00:00+05:30" })],
+    ["Remind me about a meeting at 6", assistantPlan({ action: "reminder", title: "Meeting", reply: "", dueAt: "2026-10-11T18:00:00+05:30" })],
+    ["Meeting tomorrow at 6 AM", assistantPlan({ action: "create_event", title: "Meeting", reply: "", startAt: "2026-10-12T06:00:00+05:30" })],
+    ["Schedule a meeting", assistantPlan({ action: "create_event", title: "Meeting", reply: "", startAt: "2026-10-11T06:00:00+05:30" })],
+    ["Remind me to call Mum", assistantPlan({ action: "reminder", title: "Call Mum", reply: "" })],
+  ]) {
+    const f = fixture(t, { upstream: async () => Response.json(completion(plan)) });
+    const response = await f.worker.fetch(assistantRequest(text), f.env);
+    assert.equal(response.status, 200);
+    const result = (await response.json()).plan;
+    assert.equal(result.action, plan.action);
+    assert.equal(result.startAt, plan.startAt);
+    assert.equal(result.dueAt, plan.dueAt);
+  }
+});
+
+test("assistant preflight rejects an older deployed policy before paid checks", async () => {
+  const { checkAssistant } = await import("../scripts/checkAssistant.cjs");
+  let calls = 0;
+  await assert.rejects(checkAssistant({ origin: "https://cue.example", token: TOKEN, fetchImpl: async () => {
+    calls++; return Response.json({ ok: true, assistant: true });
+  } }), /Deploy the current Worker/);
+  assert.equal(calls, 1);
+});
+
 test("extracts with Luna, no reasoning, strict output and server time; keeps key on upstream only", async (t) => {
   const f = fixture(t);
   const result = await f.worker.fetch(request(), f.env);
@@ -142,7 +262,7 @@ test("successful capture returns actual OpenAI usage metadata without raw header
   const response = await f.worker.fetch(request(), f.env);
   const payload = await response.json();
   assert.deepEqual(payload.ai, { provider: "openai", model: "gpt-6-luna", requestId: "req_test", responseId: "resp_test",
-    organizationId: "org-test", inputTokens: 500, cachedInputTokens: 100, outputTokens: 50, totalTokens: 550 });
+    organizationId: "org-test", inputTokens: 500, cachedInputTokens: 100, outputTokens: 50, totalTokens: 550, reasoningTokens: null });
   assert.doesNotMatch(JSON.stringify(payload), /fake-upstream-key|must-not-relay/);
   const absent = fixture(t);
   const receipt = (await (await absent.worker.fetch(request(), absent.env)).json()).ai;

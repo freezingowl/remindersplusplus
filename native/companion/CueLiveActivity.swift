@@ -13,6 +13,10 @@ private struct CueMark: View {
                 Image(systemName: "ellipsis").font(.system(size: 12, weight: .bold))
             } else if phase == "error" {
                 Image(systemName: "exclamationmark").font(.system(size: 10, weight: .semibold))
+            } else if phase == "answer" {
+                Image(systemName: "sparkles").font(.system(size: 10, weight: .semibold))
+            } else if phase == "event" || phase == "event_now" {
+                Image(systemName: "calendar").font(.system(size: 10, weight: .semibold))
             } else {
                 HStack(spacing: 3) {
                     Capsule().frame(width: 2.5, height: phase == "due" ? 6 : 4)
@@ -35,13 +39,30 @@ private struct CueCard: View {
     private var title: String { promoted ? context.state.nextTitle ?? context.state.title : context.state.title }
     private var reminderID: String? { promoted ? context.state.nextID : context.state.reminderID }
     private var dueAt: Date? { promoted ? context.state.nextDueAt : context.state.dueAt }
-    private var temporary: Bool { ["processing", "saved", "error"].contains(phase) }
+    private var temporary: Bool { ["processing", "saved", "answer", "error"].contains(phase) }
     private var idle: Bool { !temporary && reminderID == nil }
     private var missedCount: Int { promoted ? context.state.nextMissedCount ?? 0 : context.state.missedCount ?? 0 }
     private var reviewingMissed: Bool { promoted ? context.state.nextReviewingMissed == true : context.state.reviewingMissed == true }
     private var detail: String { promoted ? context.state.nextDetail ?? "" : context.state.detail }
+    private var answering: Bool { phase == "answer" && !promoted }
+    private var calendarAnswer: Bool { answering && context.state.answerDate != nil }
 
     var body: some View {
+        Group {
+            if answering {
+                CueAnswerView(text: CueAnswerText.primary(title: title, detail: detail), date: context.state.answerDate ?? "",
+                    detail: title == "Cue" ? "" : detail)
+            } else { standardCard }
+        }
+        .padding(.horizontal, 20).padding(.vertical, answering ? 12 : 16)
+        .frame(maxWidth: .infinity, minHeight: idle ? 48 : phase == "due" ? 132 : 72, alignment: .leading)
+        .activityBackgroundTint(nil)
+        .activitySystemActionForegroundColor(.primary)
+        .animation(reducedLuminance ? nil : .easeInOut(duration: 0.35), value: phase)
+        .widgetURL(URL(string: calendarAnswer ? "cue://calendar-answer" : "cue://reminders"))
+    }
+
+    private var standardCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 4) {
                 CueMark(phase: phase)
@@ -62,12 +83,12 @@ private struct CueCard: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show \(missedCount) missed \(missedCount == 1 ? "reminder" : "reminders")")
                 }
-                if phase == "due" { Text("NOW").font(.system(size: 10, weight: .semibold)).tracking(1) }
+                if phase == "due" || phase == "event_now" { Text("NOW").font(.system(size: 10, weight: .semibold)).tracking(1) }
             }
             .foregroundStyle(.secondary)
 
             if !idle { HStack(alignment: .center, spacing: 12) {
-                if !temporary, let reminderID {
+                if !temporary, let reminderID, !reminderID.hasPrefix("cal_") {
                     Button(intent: CompleteCueReminderIntent(reminderID: reminderID)) {
                         Image(systemName: "circle").font(.system(size: 30, weight: .ultraLight))
                             .frame(width: 38, height: 44)
@@ -84,7 +105,7 @@ private struct CueCard: View {
 
             if temporary {
                 if !context.state.detail.isEmpty {
-                    Text(context.state.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
+                    Text(context.state.detail).font(.system(size: phase == "answer" ? 14 : 12)).foregroundStyle(.secondary).lineLimit(phase == "answer" ? 4 : 2)
                 }
             } else if phase == "missed", let dueAt {
                 HStack(spacing: 5) {
@@ -93,6 +114,8 @@ private struct CueCard: View {
                     Text(dueAt, style: .time)
                 }
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+            } else if phase == "event_now" {
+                Text("In your Calendar").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
             } else if phase != "due", let dueAt {
                 HStack(spacing: 5) {
                     Text(dueAt, style: .time)
@@ -104,14 +127,6 @@ private struct CueCard: View {
                 Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
-        .padding(.horizontal, 20).padding(.vertical, 16)
-        .frame(maxWidth: .infinity, minHeight: idle ? 48 : phase == "due" ? 132 : 72, alignment: .leading)
-        // Keep the native Lock Screen surface. An opaque custom fill obscures the
-        // system's glass/translucency; glassEffect is not assumed to work in widgets.
-        .activityBackgroundTint(nil)
-        .activitySystemActionForegroundColor(.primary)
-        .animation(reducedLuminance ? nil : .easeInOut(duration: 0.35), value: phase)
-        .widgetURL(URL(string: "cue://reminders"))
     }
 }
 
@@ -133,7 +148,7 @@ struct CueLiveActivity: Widget {
             } minimal: {
                 CueMark(phase: context.isStale ? "due" : context.state.phase)
             }
-            .widgetURL(URL(string: "cue://reminders"))
+            .widgetURL(URL(string: context.state.phase == "answer" && context.state.answerDate != nil && !context.isStale ? "cue://calendar-answer" : "cue://reminders"))
         }
     }
 }

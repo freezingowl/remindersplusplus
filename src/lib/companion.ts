@@ -3,6 +3,15 @@ import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import type { Reminder, ReminderSource } from "../types";
 
 export type CompanionStatus = { enabled: boolean; allowed: boolean; active: boolean; pushStatus?: string };
+export type CalendarStatus = { connected: boolean; authorization: string };
+export type CalendarAnswer = {
+  title: string;
+  dateLabel: string;
+  rows: { time: string; title: string; kind: "event" | "info" | "free" | "busy" }[];
+  footer: string;
+  summary?: string;
+  summaryDetail?: string;
+};
 
 type CompanionModule = {
   getReminders(): Promise<string | null>;
@@ -12,6 +21,10 @@ type CompanionModule = {
   getStatus(): Promise<CompanionStatus>;
   setEnabled(enabled: boolean): Promise<CompanionStatus>;
   capture(text: string, source: ReminderSource): Promise<string>;
+  ask(text: string, source: ReminderSource): Promise<{ remindersJSON: string; reply: string; answerJSON?: string | null }>;
+  getCalendarStatus(): Promise<CalendarStatus>;
+  getCalendarAnswer(): Promise<string | null>;
+  setCalendarConnected(connected: boolean): Promise<CalendarStatus>;
   toggle(id: string, completed: boolean): Promise<string>;
   remove(id: string): Promise<string>;
   refresh(): Promise<void>;
@@ -60,8 +73,40 @@ export async function setCompanionEnabled(enabled: boolean): Promise<CompanionSt
   return module().setEnabled(enabled);
 }
 
-export async function captureWithCompanion(text: string, source: ReminderSource): Promise<Reminder[]> {
-  return remindersFromJSON(await module().capture(text, source));
+function answerFromJSON(json: string | null | undefined): CalendarAnswer | null {
+  if (!json) return null;
+  const value = JSON.parse(json) as CalendarAnswer;
+  if (!value || typeof value.title !== "string" || typeof value.dateLabel !== "string" || typeof value.footer !== "string"
+    || (value.summary != null && typeof value.summary !== "string") || (value.summaryDetail != null && typeof value.summaryDetail !== "string")
+    || !Array.isArray(value.rows) || value.rows.length > 1001
+    || value.rows.some((row) => !row || typeof row.time !== "string" || typeof row.title !== "string" || !["event", "info", "free", "busy"].includes(row.kind))) {
+    throw new Error("Cue’s Calendar answer could not be read. Ask your question again.");
+  }
+  return value;
+}
+
+export async function lastCalendarAnswer(): Promise<CalendarAnswer | null> {
+  if (!native || typeof native.getCalendarAnswer !== "function") return null;
+  return answerFromJSON(await native.getCalendarAnswer());
+}
+
+export async function captureWithCompanion(text: string, source: ReminderSource): Promise<{ reminders: Reminder[]; reply: string; answer: CalendarAnswer | null }> {
+  const companion = module();
+  if (typeof companion.ask !== "function") throw new Error("Rebuild and install Cue to enable Calendar and questions.");
+  const result = await companion.ask(text, source);
+  return { reminders: remindersFromJSON(result.remindersJSON), reply: result.reply, answer: answerFromJSON(result.answerJSON) };
+}
+
+export async function calendarStatus(): Promise<CalendarStatus> {
+  const companion = module();
+  if (typeof companion.getCalendarStatus !== "function") return { connected: false, authorization: "upgrade" };
+  return companion.getCalendarStatus();
+}
+
+export async function setCalendarConnected(connected: boolean): Promise<CalendarStatus> {
+  const companion = module();
+  if (typeof companion.setCalendarConnected !== "function") throw new Error("Rebuild and install Cue to connect Apple Calendar.");
+  return companion.setCalendarConnected(connected);
 }
 
 export async function toggleWithCompanion(id: string, completed: boolean): Promise<Reminder[]> {

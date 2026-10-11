@@ -51,6 +51,51 @@ test("Workers runtime parses the sushi prompt and refuses upstream redirects", {
   } finally { await mf.dispose(); }
 });
 
+test("Workers assistant uses low reasoning and suppresses follow-ups without bypassing validation", { timeout: 30_000 }, async () => {
+  const token = "fake-test-token-at-least-32-characters";
+  let calls = 0;
+  const startAt = new Date(Date.now() + 86_400_000).toISOString();
+  const plan = { action: "create_event", title: "Meeting", note: "", dueAt: "", delay: null,
+    startAt, endAt: "", allDay: false, searchTitle: "", rangeStart: "", rangeEnd: "", queryKind: "agenda", reply: "" };
+  const mf = new Miniflare(convertV4MiniflareOptions({
+    host: "127.0.0.1", port: 0, cf: false, logRequests: false, modules: true,
+    script: readFileSync(new URL("../worker/worker.mjs", import.meta.url), "utf8"), compatibilityDate: "2026-10-10",
+    d1Databases: { CUE_DB: "offline-cue-defaults-runtime" },
+    bindings: { OPENAI_API_KEY: "fake-upstream-key", CUE_CLIENT_TOKEN: token },
+    outboundService: async (request) => {
+      assert.equal(request.url, "https://api.openai.com/v1/responses");
+      const body = await request.json();
+      assert.equal(body.reasoning.effort, "low");
+      assert.equal(body.max_output_tokens, 2048);
+      assert.equal(body.text.format.strict, true);
+      assert.equal(body.input[1].content, "Meeting at 6");
+      assert.match(body.input[0].content, /Never ask the user a follow-up/);
+      calls++;
+      const result = calls === 1 ? { ...plan, action: "answer", title: "", startAt: "", reply: "What date is the meeting?" } : plan;
+      return Response.json({ status: "completed", usage: { output_tokens_details: { reasoning_tokens: 32 } },
+        output: [{ type: "message", content: [{ type: "output_text", text: JSON.stringify(result) }] }] });
+    },
+  }));
+  try {
+    const db = await mf.getD1Database("CUE_DB");
+    await db.exec(readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8").replace(/--[^\n]*/g, "").replace(/\n/g, " "));
+    const capture = () => mf.dispatchFetch("https://cue.example/v1/assistant", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Meeting at 6", timeZone: "Asia/Kolkata" }),
+    });
+    const suppressed = await capture();
+    assert.equal(suppressed.status, 200);
+    assert.equal((await suppressed.json()).plan.reply, "I couldn’t complete that request. Nothing was changed.");
+    const action = await capture();
+    assert.equal(action.status, 200);
+    const result = await action.json();
+    assert.equal(result.plan.startAt, startAt);
+    assert.equal(result.plan.action, "create_event");
+    assert.equal(result.ai.reasoningTokens, 32);
+    assert.equal((await db.prepare("SELECT day_count FROM cue_quotas WHERE route = 'parse'").first()).day_count, 2);
+  } finally { await mf.dispose(); }
+});
+
 test("real Workers alarms send successive silent Live Activity updates and enforce ownership", { timeout: 30_000 }, async () => {
   const token = "fake-test-token-at-least-32-characters";
   const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "pem" });

@@ -1,5 +1,34 @@
 # Test Cue from cloud setup to Back Tap
 
+## Calendar assistant branch
+
+The `feat/calendar-assistant` build adds **Ask Cue** while preserving the existing reminder Shortcut. Deploy the current Worker, sync/build/install Cue, then enable **Settings → Connect Apple Calendar → Full access**. The permission is a phone step; Mac compilation cannot grant it.
+
+Test these unlocked first through Cue, then through Back Tap:
+
+1. “Remind me to make sushi in two minutes”: one Cue card, unchanged elapsed deadline and missed behavior.
+2. “Add a Calendar event called Cue calendar test tomorrow at 2 PM for 30 minutes”: inspect Apple Calendar for one correctly timed event. Repeat once: the duplicate guard should report it already exists.
+3. “What events are coming up day after tomorrow?”: compare the brief Activity answer with Apple Calendar. Confirm no Cue reminder was added by the question.
+4. “When am I free two days from now?”: compare gaps against overlapping and busy all-day events; unspecified hours mean 9 AM–6 PM. Deny/revoke permission and verify it requests access rather than claiming the day is free.
+5. “Move my Cue calendar test event tomorrow to 4 PM tomorrow”: inspect the moved occurrence. With two matching events, Cue should prefer an exact title, then the next occurrence, and report the chosen move instead of asking a follow-up.
+6. Watch the answer for about eight seconds and confirm the next event/reminder returns. While an event is in progress, the card has no reminder completion circle and the event leaves the timeline at its end. Reopen Cue after editing events elsewhere to refresh the saved push snapshot.
+
+After installing the simple-answer update, reproduce the reported case: a 9–10 AM Hackathon and two subscribed all-day holiday dates tomorrow. **“What's for tomorrow?”** should show **Hackathon, 9–10 AM tomorrow.** as the large main text, with no default event table. **“Am I free tomorrow?”** should show **Free after 10 AM tomorrow.** in that same large font, with only a small **Checked 9 AM–6 PM** scope note. A personal all-day busy event must still block availability. Subscribed dates without availability and birthdays are informational; explicitly busy subscribed events still block. Do not create test events in the real Calendar unless the participant approves those writes.
+
+Ask a basic general question, such as **“What is the capital of India?”**: the actual reply must be the large main text, not a big “Cue” title and a small subtitle. Verify a longer reply stays within three main-text lines, and that the next reminder/event returns after about eight seconds.
+
+Check the no-clarification defaults through Ask Cue: **“Meeting at 6”** creates a one-hour Calendar event at the next 6 PM; **“Schedule a meeting”** uses the next whole local hour; and **“Remind me about the meeting”** saves an untimed reminder. Explicit AM/PM, date and duration must override those defaults. A clearly specified past time should show a concise failure rather than silently schedule a different time. Verify the actual saved event/reminder before relying on it.
+
+Tap a Calendar answer while it is visible: Cue should optionally open its complete scrollable answer, retaining all events and holiday dates. Several appointments get a short remaining count on the card; multiple gaps show up to two intervals and a remaining count. In-app Calendar questions now show a brief confirmation without automatically opening a details sheet. The saved full answer is not continuously updating; ask again after editing Calendar. Disconnect Calendar and verify it is cleared. A native rebuild is required; the already-deployed Worker does not need another deployment.
+
+`npm run cloud:check:assistant` verifies six synthetic AI request plans without reading/writing your phone Calendar. It is a paid backend check, not proof of EventKit/device behavior. Questions use fresh local Calendar data at execution. Unattended transitions require the separate APNs configuration in [worker/APNS.md](worker/APNS.md), which still needs Apple keys. Existing native Activity snapshots decode across this upgrade; restarting the companion after installation gives it the new event queue.
+
+Verified at 06:54 IST: 22 Worker tests, seven scheduler tests, two real runtime tests, three companion checks (including 12 new Calendar/free-time scenarios), four path checks, typecheck/lint, native packaging and unsigned Release app/widget compilation passed. At 07:09 IST, after explicit participant approval, the current Worker was deployed and authenticated readiness reported `assistant:true`. The 22 Worker and seven scheduler tests passed again; all six live AI routing cases passed, plus “What's for tomorrow?” selected the full 12 October local day in Asia/Kolkata. Seven synthetic AI calls were made without accessing or modifying any phone Calendar. Retry that question on the phone and compare the answer with Apple Calendar; actual event contents and eight-second rendering remain device checks.
+
+At 07:24 IST, typecheck/lint, the 22 Worker/seven scheduler/four path/three companion checks and the unsigned Release app/widget build passed for the UI/free-time fix. Companion tests add 20 answer scenarios, including the reported holiday/Hackathon case, personal all-day busy time, subscriptions, declined/free events, full-result retention, date labeling and bounded Unicode payload. `tests/swift/answer-preview.swift` renders the actual answer component with synthetic data; six renders at 320/350/390-point widths fit below 160 points (agenda 155, free-time answer 134). This does not prove system translucency, physical navigation or EventKit metadata on the phone. No new paid AI calls, real Calendar access/writes or phone installation were performed for this fix.
+
+At 07:35 IST, those same checks and the unsigned Release app/widget build passed for the simpler main-answer UI, including 12 additional compiled scenarios for concise summaries, a middle free interval, legacy saved-answer decoding and general-answer promotion. Twelve synthetic component renders passed at 320/350/390-point widths (97–143 points); general, agenda, free-time and long-reply previews were visually inspected. App executable, nonempty bundled JavaScript and embedded widget were verified. The first new exact-text test needed normalization of Apple's localized thin spaces, not a production date change. No Worker deployment, paid AI call, phone Calendar operation or app installation/launch was performed.
+
 The screenshot's **“Cloud AI isn’t configured”** error occurred in the native Shortcut before any AI request. The new build embeds the Cue Worker origin/access token, so the Shortcut no longer relies on JavaScript opening once to save them. An older installed binary does not gain this fix from a JavaScript reload: rebuild and install it.
 
 **This local checkout's server setup is complete as of 11 October 2026, 04:58 IST.** The deployed Worker has the D1 binding/schema and matching Cue token; authenticated readiness passed. The exact sushi sentence returned **Make sushi** with a deadline two minutes ahead in **2.524 seconds**. Written-out duration, explicit local time and ambiguous input also passed. Start at **step 3** to install and test on your phone. Steps 1–2 remain here for a fresh deployment or troubleshooting. Backend checks do not create reminders on the phone.
@@ -64,7 +93,7 @@ Type exactly:
 Submit once. Expect:
 
 - A **Make sushi** reminder in Cue with a future due time about two minutes from submission.
-- The Live Activity shows **Adding reminder…**, then **Added: Make sushi** with the time, then the due/upcoming reminder. In-app captures respect an explicitly disabled companion; enable it in Settings if needed.
+- The Live Activity shows **Thinking…**, then **Added: Make sushi** with the time, then the due/upcoming reminder or Calendar event. In-app captures respect an explicitly disabled companion; enable it in Settings if needed.
 - No **Cloud AI isn’t configured** error and no newly saved untimed placeholder.
 
 Lock the phone and wait about two minutes. With APNs configured and its schedule registered, the Worker updates this same card to **NOW**, without a notification banner/sound. After one minute unfinished, the task appears in the missed badge. Foreground updates work while Cue is active; the preloaded stale snapshot supplies only one fallback transition. Without Apple push setup, do not assume all future changes happen while Cue is suspended.

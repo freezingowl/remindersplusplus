@@ -3,8 +3,8 @@ const path = require("node:path");
 const { withDangerousMod, withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject } = require("expo/config-plugins");
 
 const folder = "CueCompanion";
-const appFiles = ["CueReminderModel.swift", "CueActivityAttributes.swift", "CueCompanionService.swift", "CueCompanionBridge.swift", "CueCompanionBridge.m", "CueIntents.swift"];
-const widgetFiles = ["CueReminderModel.swift", "CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"];
+const appFiles = ["CueReminderModel.swift", "CueCalendarAnswer.swift", "CueCalendarService.swift", "CueActivityAttributes.swift", "CueCompanionService.swift", "CueCompanionBridge.swift", "CueCompanionBridge.m", "CueIntents.swift"];
+const widgetFiles = ["CueReminderModel.swift", "CueCalendarAnswer.swift", "CueCalendarAnswerView.swift", "CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"];
 const unquote = (value) => String(value ?? "").replace(/^"|"$/g, "");
 
 function configurations(project, target) {
@@ -112,6 +112,7 @@ function withCueCompanion(config) {
   });
   config = withInfoPlist(config, (mod) => {
     mod.modResults.NSSupportsLiveActivities = true;
+    mod.modResults.NSCalendarsFullAccessUsageDescription = calendarUsageDescription;
     mod.modResults.CueAPNsEnvironment = pushEnvironment(cloudEnvironment(mod.modRequest.projectRoot));
     applyCloudConfiguration(mod.modResults, cloudEnvironment(mod.modRequest.projectRoot));
     return mod;
@@ -142,3 +143,5 @@ module.exports.copySources = copySources;
 
 module.exports.applyCloudConfiguration = applyCloudConfiguration;
 module.exports.cloudEnvironment = cloudEnvironment;
+const calendarUsageDescription = "Allow Cue to read your Calendar to answer questions and find free time, and create or move events when you ask. Calendar contents are processed on your iPhone.";
+module.exports.calendarUsageDescription = calendarUsageDescription;
