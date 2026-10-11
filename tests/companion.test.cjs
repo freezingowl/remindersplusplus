@@ -68,6 +68,7 @@ test("native selection prioritizes the newest due task and retains missed remind
   assert.match(run.stdout, /12 Calendar and availability scenarios passed/);
   assert.match(run.stdout, /20 Calendar answer scenarios passed/);
   assert.match(run.stdout, /12 simple answer scenarios passed/);
+  assert.match(run.stdout, /9 Calendar choice scenarios passed/);
 });
 
 test("native build embeds only validated Cue settings and clears obsolete values", () => {

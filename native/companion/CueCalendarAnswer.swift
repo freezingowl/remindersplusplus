@@ -51,6 +51,21 @@ struct CueCalendarEntry: Sendable {
     var blocksTime: Bool { !declined && !informational && availability != .free }
 }
 
+enum CueCalendarChoice {
+    static func index(in entries: [CueCalendarEntry], title: String, now: Date) -> Int? {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let matching = entries.indices.filter { !entries[$0].declined && entries[$0].title.range(of: title, options: options) != nil }
+        let exact = matching.filter { entries[$0].title.compare(title, options: options) == .orderedSame }
+        let candidates = exact.isEmpty ? matching : exact
+        // Prefer the named event's next occurrence; if the supplied original
+        // date is past, choose its latest occurrence instead of asking back.
+        if let next = candidates.filter({ entries[$0].start >= now }).min(by: { entries[$0].start < entries[$1].start }) { return next }
+        if let active = candidates.filter({ entries[$0].end > now }).max(by: { entries[$0].start < entries[$1].start }) { return active }
+        return candidates.max(by: { entries[$0].start < entries[$1].start })
+    }
+}
+
 enum CueCalendarAnswers {
     static func make(entries: [CueCalendarEntry], window: CueTimeRange, availability: Bool,
                      searchTitle: String = "", now: Date = Date(), calendar: Calendar = .current,

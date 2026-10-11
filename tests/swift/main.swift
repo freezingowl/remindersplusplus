@@ -136,3 +136,17 @@ expect(oldAnswer.headline == "Tomorrow" && oldAnswer.conciseDetail.isEmpty, "Pre
 expect(CueAnswerText.primary(title: "Cue", detail: "The capital of India is New Delhi.") == "The capital of India is New Delhi.", "Promote the actual answer in old generic snapshots too")
 expect(CueAnswerText.primary(title: "  A short\nanswer.  ", detail: "unused") == "A short answer.", "New replies use their main text with normalized whitespace")
 print("12 simple answer scenarios passed")
+
+func choice(_ entries: [CueCalendarEntry], title: String = "Meeting", at: Date = date(8)) -> Int? {
+    CueCalendarChoice.index(in: entries, title: title, now: at)
+}
+expect(choice([]) == nil, "An empty Calendar cannot fabricate a moved event")
+expect(choice([hackathon], title: " ") == nil, "An empty event name cannot match the whole Calendar")
+expect(choice([hackathon]) == nil, "Only matching names are eligible")
+expect(choice([entry("Meeting", start: 14, end: 15), entry("Meeting", start: 9, end: 10)]) == 1, "Choose the earliest upcoming matching event without asking back")
+expect(choice([entry("Team meeting", start: 9, end: 10), entry("MEETING", start: 14, end: 15)]) == 1, "An exact title has priority over substring matches")
+expect(choice([entry("Meeting", start: 7, end: 8), entry("Meeting", start: 14, end: 15)]) == 1, "Prefer an upcoming occurrence over an ended one")
+expect(choice([entry("Meeting", start: 7, end: 9)], at: date(8)) == 0, "An active matching occurrence remains eligible")
+expect(choice([entry("Meeting", start: 6, end: 7), entry("Meeting", start: 7, end: 8)], at: date(10)) == 1, "For a past original date, prefer the latest matching occurrence")
+expect(choice([entry("Meeting", start: 9, end: 10, declined: true)]) == nil, "Declined invitations are not silently selected")
+print("9 Calendar choice scenarios passed")

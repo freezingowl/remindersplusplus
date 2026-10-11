@@ -133,14 +133,11 @@ final class CueCalendarService {
                   let rangeStart = CueDates.parse(plan.rangeStart), let rangeEnd = CueDates.parse(plan.rangeEnd) else {
                 throw CueCompanionError.message("Name the event and its original date to move it.")
             }
-            let matches = try events(start: rangeStart, end: rangeEnd).filter {
-                ($0.title ?? "").range(of: plan.searchTitle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            let matches = try events(start: rangeStart, end: rangeEnd)
+            guard let index = CueCalendarChoice.index(in: matches.map(entry), title: plan.searchTitle, now: Date()) else {
+                throw CueCompanionError.message("No matching Calendar event. Nothing was moved.")
             }
-            guard matches.count == 1, let match = matches.first else {
-                return .init(title: "Which event?", detail: matches.isEmpty
-                    ? "No matching event. Include its name and original date."
-                    : "Found \(matches.count) matches. Include the event’s original date and time.")
-            }
+            let match = matches[index]
             guard match.calendar.allowsContentModifications else {
                 throw CueCompanionError.message("That Calendar is read-only. Choose an event in a writable Calendar.")
             }

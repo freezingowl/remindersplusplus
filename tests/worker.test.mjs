@@ -113,6 +113,13 @@ test("assistant distinguishes questions from writes and uses the existing atomic
   const body = JSON.parse(f.calls[0].options.body);
   assert.equal(body.store, false);
   assert.equal(body.text.format.strict, true);
+  assert.equal(body.reasoning.effort, "low");
+  assert.equal(body.max_output_tokens, 2048);
+  assert.match(body.input[0].content, /Never ask the user a follow-up/);
+  assert.match(body.input[0].content, /bare hour 1–7 means PM, 8–11 means AM/);
+  assert.match(body.input[0].content, /next occurrence of that local clock time/);
+  assert.match(body.input[0].content, /next whole LOCAL hour/);
+  assert.doesNotMatch(body.input[0].content, /ask for the missing detail|require clarification/);
   assert.match(body.input[0].content, /Never create a task from a question/);
   assert.match(body.input[0].content, /day after tomorrow/);
   assert.match(body.input[0].content, /LOCAL/);
@@ -137,7 +144,7 @@ test("assistant preserves server timing for reminder captures and validates even
   }
 });
 
-test("assistant refuses invalid ranges, ambiguous write fields, impossible dates and unsupported operations", async (t) => {
+test("assistant refuses invalid ranges, malformed write fields, impossible dates and unsupported operations", async (t) => {
   const invalid = [
     assistantPlan({ action: "delete_event" }),
     assistantPlan({ action: "answer", reply: "" }),
@@ -166,6 +173,43 @@ test("assistant preflight stops before paid calls when the deployed Worker lacks
     return Response.json({ ok: true });
   } }), /Deploy the current Worker/);
   assert.deepEqual(calls, ["https://cue.example/v1/status"]);
+});
+
+test("assistant suppresses model follow-up questions without inventing a successful write", async (t) => {
+  for (const reply of ["What date is the meeting at 6? And do you mean 6 AM or 6 PM?", "Please specify the date", "Tell me the start time", "Is that tomorrow？"]) {
+    const f = fixture(t, { upstream: async () => Response.json(completion(assistantPlan({ reply }))) });
+    const result = (await (await f.worker.fetch(assistantRequest("Meeting at 6"), f.env)).json()).plan;
+    assert.equal(result.action, "answer");
+    assert.equal(result.reply, "I couldn’t complete that request. Nothing was changed.");
+    assert.equal(f.calls.length, 1);
+  }
+});
+
+test("assistant accepts inferred schedules while retaining explicit dates and reminder arithmetic", async (t) => {
+  for (const [text, plan] of [
+    ["Meeting at 6", assistantPlan({ action: "create_event", title: "Meeting", reply: "", startAt: "2026-10-11T18:00:00+05:30" })],
+    ["Remind me about a meeting at 6", assistantPlan({ action: "reminder", title: "Meeting", reply: "", dueAt: "2026-10-11T18:00:00+05:30" })],
+    ["Meeting tomorrow at 6 AM", assistantPlan({ action: "create_event", title: "Meeting", reply: "", startAt: "2026-10-12T06:00:00+05:30" })],
+    ["Schedule a meeting", assistantPlan({ action: "create_event", title: "Meeting", reply: "", startAt: "2026-10-11T06:00:00+05:30" })],
+    ["Remind me to call Mum", assistantPlan({ action: "reminder", title: "Call Mum", reply: "" })],
+  ]) {
+    const f = fixture(t, { upstream: async () => Response.json(completion(plan)) });
+    const response = await f.worker.fetch(assistantRequest(text), f.env);
+    assert.equal(response.status, 200);
+    const result = (await response.json()).plan;
+    assert.equal(result.action, plan.action);
+    assert.equal(result.startAt, plan.startAt);
+    assert.equal(result.dueAt, plan.dueAt);
+  }
+});
+
+test("assistant preflight rejects an older deployed policy before paid checks", async () => {
+  const { checkAssistant } = await import("../scripts/checkAssistant.cjs");
+  let calls = 0;
+  await assert.rejects(checkAssistant({ origin: "https://cue.example", token: TOKEN, fetchImpl: async () => {
+    calls++; return Response.json({ ok: true, assistant: true });
+  } }), /Deploy the current Worker/);
+  assert.equal(calls, 1);
 });
 
 test("extracts with Luna, no reasoning, strict output and server time; keeps key on upstream only", async (t) => {
@@ -218,7 +262,7 @@ test("successful capture returns actual OpenAI usage metadata without raw header
   const response = await f.worker.fetch(request(), f.env);
   const payload = await response.json();
   assert.deepEqual(payload.ai, { provider: "openai", model: "gpt-6-luna", requestId: "req_test", responseId: "resp_test",
-    organizationId: "org-test", inputTokens: 500, cachedInputTokens: 100, outputTokens: 50, totalTokens: 550 });
+    organizationId: "org-test", inputTokens: 500, cachedInputTokens: 100, outputTokens: 50, totalTokens: 550, reasoningTokens: null });
   assert.doesNotMatch(JSON.stringify(payload), /fake-upstream-key|must-not-relay/);
   const absent = fixture(t);
   const receipt = (await (await absent.worker.fetch(request(), absent.env)).json()).ai;
