@@ -1,11 +1,26 @@
 # Cue
 
-Cue is a calm, card-based personal reminder app for iOS and Android. Write a thought naturally — or speak it — and Cue turns it into a reminder card and understands an optional date and time with OpenAI. The custom iPhone app uses its Live Activity alone; Expo Go and Android retain local notification alerts.
+## Your personal AI, always on your Lock Screen
+
+Cue puts a personal AI one Back Tap away. Without opening the app, say what you need — save a reminder, add a Calendar event, or ask when you are free — and Cue answers or confirms it on the iPhone Lock Screen before returning to what is next. The custom iPhone build uses a Live Activity for this surface; Expo Go and Android retain the ordinary reminder experience.
 
 Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 October 2026.
 
+## Watch the Lock Screen demos
+
+These are real, unedited iPhone screen recordings from the participant's custom Cue build:
+
+| Demo | What it shows |
+| --- | --- |
+| [Back Tap adds a Calendar event](demos/back-tap-add-calendar.mov) · 29 sec | A Back Tap opens the system input sheet. Cue understands “Meeting at hackathon at 11 am today,” adds it to Calendar, and confirms **Added to Calendar** on the Lock Screen. |
+| [Back Tap answers a Calendar question](demos/back-tap-calendar-availability.mp4) · 23 sec | A Back Tap asks when the user is free tomorrow. Cue shows **Thinking…**, then the large, brief Lock Screen answer: **Free after 10 AM tomorrow.** |
+
+The recordings live in [`demos/`](demos/), along with their formats and capture notes. iOS still supplies the secure input/authentication sheet; Cue supplies the AI interpretation and Live Activity response. A Live Activity has Apple-controlled lifetime and delivery limits, so this is not a background daemon or a 24/7 system replacement.
+
 ## What it does
 
+- Keeps the useful part of a personal assistant in front of you: the next task/event or a brief answer, without requiring an app launch.
+- Uses a Back Tap Shortcut to take a request from the Lock Screen; the Live Activity shows **Thinking…**, a concise result, then returns to the next item.
 - Captures typed reminders in a focused, card-first interface inspired by the supplied reference.
 - Records up to about 60 seconds from the in-app microphone and sends it through the cloud Worker for transcription.
 - Uses structured OpenAI output to turn natural language such as “Call Mum tomorrow at 8 PM” into a title, detail, and due time.

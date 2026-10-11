@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T08:48:05+05:30 — Publish the Lock Screen personal-AI demos
+
+- Changed: Added two original participant-provided iPhone screen recordings under `demos/`: one demonstrates a Back Tap request adding a Calendar event and confirming it on the Lock Screen; the other demonstrates a Back Tap Calendar availability question, the brief Thinking state and the large answer. Reframed the README and submission description around Cue's primary value: a personal AI visible on the Lock Screen without opening the app.
+- Why: The participant clarified that this always-in-front-of-you Lock Screen experience—not the underlying app screen—is the project’s main story. The concise demo table puts that evidence near the top of the repository.
+- Validation: Inspected both source recordings and sampled their frames. The unedited files are 28.7 seconds (27 MB) and 23.4 seconds (21 MB), both 1170 × 2532 HEVC/AAC captures and below GitHub’s 100 MB per-file limit. Verified the relative demo links and documentation diff whitespace. No application code, Worker deployment, AI request, phone configuration, Calendar data or secret changed.
+- Privacy: These are the participant-supplied recordings the participant explicitly requested to publish. They contain only the visible demo Lock Screen/request text; no credentials were added.
+
 ## 2026-10-11T07:47:17+05:30 — Apply scheduling defaults instead of assistant clarification questions
 
 - Changed: Updated Ask Cue's strict action prompt to execute recognizable scheduling requests without asking for a date or AM/PM. Bare 1–7 o’clock means PM, 8–11 AM, 12 noon, an omitted date is the next local occurrence, and a meeting without date/time is the next whole local hour. Event duration remains one hour by default; untimed reminders stay untimed. Explicit date/time/duration values override defaults, and clearly past explicit values still fail rather than silently changing. Generic model follow-up text is replaced by a concise no-change result. Moves now choose an exact title first, then the next matching occurrence instead of presenting an ambiguity question. The authenticated status response reports that this policy is present, and usage receipts include provider-reported reasoning tokens when available.
