@@ -1,10 +1,10 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { withDangerousMod, withInfoPlist, withPodfileProperties, withXcodeProject } = require("expo/config-plugins");
+const { withDangerousMod, withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject } = require("expo/config-plugins");
 
 const folder = "CueCompanion";
 const appFiles = ["CueReminderModel.swift", "CueActivityAttributes.swift", "CueCompanionService.swift", "CueCompanionBridge.swift", "CueCompanionBridge.m", "CueIntents.swift"];
-const widgetFiles = ["CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"];
+const widgetFiles = ["CueReminderModel.swift", "CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"];
 const unquote = (value) => String(value ?? "").replace(/^"|"$/g, "");
 
 function configurations(project, target) {
@@ -106,8 +106,13 @@ function cloudEnvironment(projectRoot) {
 }
 
 function withCueCompanion(config) {
+  config = withEntitlementsPlist(config, (mod) => {
+    mod.modResults["aps-environment"] = pushEnvironment(cloudEnvironment(mod.modRequest.projectRoot));
+    return mod;
+  });
   config = withInfoPlist(config, (mod) => {
     mod.modResults.NSSupportsLiveActivities = true;
+    mod.modResults.CueAPNsEnvironment = pushEnvironment(cloudEnvironment(mod.modRequest.projectRoot));
     applyCloudConfiguration(mod.modResults, cloudEnvironment(mod.modRequest.projectRoot));
     return mod;
   });
@@ -123,6 +128,12 @@ function withCueCompanion(config) {
     copySources(mod.modRequest.projectRoot, mod.modRequest.platformProjectRoot);
     return mod;
   }]);
+}
+
+function pushEnvironment(env) {
+  const value = env.CUE_APNS_ENVIRONMENT ?? "development";
+  if (!["development", "production"].includes(value)) throw new Error("CUE_APNS_ENVIRONMENT must be development or production.");
+  return value;
 }
 
 module.exports = withCueCompanion;

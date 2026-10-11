@@ -28,3 +28,8 @@ Thumbs.db
 .dev.vars
 .dev.vars.*
 .wrangler/
+
+# Generated iOS checkout embeds the private demo token and local signing setup.
+# Reproduce it from app.json, the tracked config plugins and native/companion/.
+/ios/
+*.p8

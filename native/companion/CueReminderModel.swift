@@ -36,14 +36,33 @@ enum CueDates {
 }
 
 enum CueSelection {
-    // Preserve the card interrupted by capture. A due task takes precedence.
-    static func reminder(_ reminders: [CueReminder], preferredID: String?, now: Date) -> CueReminder? {
+    static let dueWindow: TimeInterval = 60
+
+    // The newest due task takes over; older unfinished tasks remain in the store.
+    static func reminder(_ reminders: [CueReminder], now: Date) -> CueReminder? {
         let open = reminders.filter { !$0.completed }
-        let due = open.filter { ($0.dueDate ?? .distantFuture) <= now }
-        if let pinned = due.first(where: { $0.id == preferredID }) { return pinned }
-        if let first = due.sorted(by: earlier).first { return first }
-        if let pinned = open.first(where: { $0.id == preferredID }) { return pinned }
-        return open.sorted(by: earlier).first
+        let due = open.filter { ($0.dueDate ?? .distantFuture) <= now && ($0.dueDate ?? .distantPast).addingTimeInterval(dueWindow) > now }
+        if let latest = due.sorted(by: { earlier($1, $0) }).first { return latest }
+        return open.filter { $0.dueDate.map { $0 > now } ?? true }.sorted(by: earlier).first
+    }
+
+    static func missed(_ reminders: [CueReminder], now: Date) -> [CueReminder] {
+        let current = reminder(reminders, now: now)
+        return reminders.filter {
+            guard !$0.completed, let date = $0.dueDate, date <= now else { return false }
+            // Give the current task one minute as NOW. An earlier due task is
+            // missed as soon as a newer one takes over, even within that minute.
+            return $0.id != current?.id || date.addingTimeInterval(dueWindow) <= now
+        }.sorted(by: earlier)
+    }
+
+    static func nextChange(_ reminders: [CueReminder], now: Date) -> Date? {
+        var dates = reminders.filter { !$0.completed }.compactMap(\.dueDate).filter { $0 > now }
+        if let current = reminder(reminders, now: now)?.dueDate {
+            let missedAt = current.addingTimeInterval(dueWindow)
+            if missedAt > now { dates.append(missedAt) }
+        }
+        return dates.min()
     }
 
     static func nextDue(_ reminders: [CueReminder], now: Date) -> CueReminder? {
@@ -54,7 +73,10 @@ enum CueSelection {
     private static func earlier(_ a: CueReminder, _ b: CueReminder) -> Bool {
         let aDate = a.dueDate ?? .distantFuture
         let bDate = b.dueDate ?? .distantFuture
-        return aDate == bDate ? a.createdAt < b.createdAt : aDate < bDate
+        if aDate != bDate { return aDate < bDate }
+        let aCreated = CueDates.parse(a.createdAt) ?? .distantPast
+        let bCreated = CueDates.parse(b.createdAt) ?? .distantPast
+        return aCreated == bCreated ? a.id < b.id : aCreated < bCreated
     }
 }
 

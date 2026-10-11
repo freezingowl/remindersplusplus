@@ -1,10 +1,12 @@
 # Cue cloud AI
 
-Cue's app and native iOS Shortcut call this Worker. Only the Worker calls OpenAI; reminders and notification schedules remain on the phone. This deployment is intended for a private hackathon demo.
+Cue's app and native iOS Shortcut call this Worker. Only the Worker calls OpenAI; the full reminder store remains on the phone. Optional [ActivityKit push scheduling](APNS.md) stores a compact, bounded session queue in Cloudflare Durable Objects so the same card can change while Cue is suspended. This deployment is intended for a private hackathon demo.
 
-The participant's existing [floral-frost-2cd1 deployment](https://floral-frost-2cd1.ajaytcr007.workers.dev/health) is configured and verified as of 11 October 2026, 04:58 IST. `CUE_DB` is a **D1 database binding**, pointing to the APAC database `cue-ai-limits`; it is not a string environment variable. The existing OpenAI secret is retained and the Cue token matches the ignored local `.env`. Readiness and four live text cases passed, including the exact sushi prompt in 2.524 seconds. A subsequent read-only iPhone audit confirmed three participant Back Tap saves; the latest incomplete task had no notification scheduled. Follow [TESTING.md](../TESTING.md) for permissions and a fresh alert test.
+The participant's existing [floral-frost-2cd1 deployment](https://floral-frost-2cd1.ajaytcr007.workers.dev/health) has verified text AI. `CUE_DB` is a **D1 database binding** for APAC database `cue-ai-limits`, not a string variable. The OpenAI secret and matching Cue token are preserved. Readiness and four live text cases passed, including sushi in 2.524 seconds; a read-only iPhone audit confirmed three Back Tap saves. The newer custom iPhone flow is Live Activity only. Its unattended queue updates need Apple keys and a rebuilt app; follow [APNS.md](APNS.md) and [TESTING.md](../TESTING.md).
 
 ## Deploy by copy/paste in Cloudflare
+
+For the requested unattended Live Activity changes, also configure the Durable Object and Apple secrets described in [APNS.md](APNS.md). Wrangler is the recommended deployment path for that binding/migration. Text AI alone still uses the settings below.
 
 1. In **Workers & Pages**, create a Worker named `cue-ai`. Open **Edit code**, replace the starter JavaScript with **all of [worker.mjs](worker.mjs)**, and deploy. This is a standalone ES module: no build, imports, or npm dependencies are required.
 2. Create a **D1 SQL database** named `cue-ai-limits`. Open its **Console** and execute [schema.sql](schema.sql). The script creates the table without deleting existing counters.
@@ -76,12 +78,12 @@ These are **global limits across everyone using this Worker**, not per-device li
 
 There are also input caps (2,000 characters, 16 KB JSON, 2 MB audio), a 20-second upstream timeout, a 25-second app timeout, and no automatic paid retries. Cue stops in-app voice recording around 60 seconds. Upload size is enforced on the server, but an audio byte cap does not establish audio duration for arbitrary clients. These are request ceilings, not a guaranteed dollar spending cap. OpenAI usage and billing remain separate.
 
-No reminder text, audio, raw IP addresses, API keys or tokens are stored in D1 or logged by this code. The Worker sends text/audio to OpenAI for processing. Responses requests set `store: false`; that does not override OpenAI's account-level data-retention policies.
+AI requests do not store text/audio in D1 or logs. The optional APNs scheduler separately retains open titles/IDs/times and the activity push token in its private Durable Object until session expiry; [APNS.md](APNS.md) details bounds, cleanup and ownership. D1 stores quota counters only. OpenAI Responses uses `store: false`, subject to account-level data-retention policies.
 
 ## Test the deployment
 
 - Start with the readiness check and sushi parser test above, then follow [TESTING.md](../TESTING.md) for installation, permission checks, in-app capture and Back Tap in that order. **Check cloud connection** in Cue Settings uses authenticated `GET /v1/status`; it checks configuration/token/schema, not OpenAI key validity or model access.
-- In Cue, submit **“Remind me to drink water in two minutes.”** Check the card's time and allow notifications. Lock the phone and wait for the local notification.
+- In Cue, submit **“Remind me to drink water in two minutes.”** Check the time. For custom iPhone builds, follow [APNS.md](APNS.md) to check the same Live Activity at the deadline; no local alert is scheduled. Expo Go/Android retain local notifications.
 - Run **Add to Cue** while unlocked with another clear task/time. Check **Adding reminder… → Added… → original due/upcoming task** on the Live Activity. Reopen Cue and check the new reminder is in the list.
 - Try one microphone reminder. Check transcription and the resulting date/time. This uses one voice request and one text request.
 - Check ambiguous input such as **“Remind me about the meeting today.”** It should remain **No time set** rather than inventing an hour. AI extraction is probabilistic: review parsed times, including AM/PM and timezone boundaries.

@@ -47,14 +47,14 @@ test("native plugin survives repeated prebuilds and preserves app signing/versio
   }
   const sources = (target) => project.pbxSourcesBuildPhaseObj(target).files.map(({ value }) => objects.PBXBuildFile[value].fileRef_comment).sort();
   assert.deepEqual(sources("APP"), ["CueActivityAttributes.swift", "CueCompanionBridge.m", "CueCompanionBridge.swift", "CueCompanionService.swift", "CueIntents.swift", "CueReminderModel.swift"]);
-  assert.deepEqual(sources(widget[0]), ["CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"]);
+  assert.deepEqual(sources(widget[0]), ["CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift", "CueReminderModel.swift"]);
   assert.equal(objects.PBXNativeTarget.APP.dependencies.length, 1);
   const embedding = project.pbxCopyfilesBuildPhaseObj("APP");
   assert.equal(embedding.dstSubfolderSpec, 13);
   assert.ok(embedding.files.some(({ value }) => objects.PBXBuildFile[value].fileRef === widget[1].productReference));
 });
 
-test("native selection restores the interrupted task and promotes due reminders", { timeout: 60_000 }, (t) => {
+test("native selection prioritizes the newest due task and retains missed reminders", { timeout: 60_000 }, (t) => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cue companion tests "));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const executable = path.join(temp, "selection-tests");
@@ -64,7 +64,7 @@ test("native selection restores the interrupted task and promotes due reminders"
   const run = spawnSync(executable, [], { encoding: "utf8", timeout: 5_000 });
   assert.ifError(run.error);
   assert.equal(run.status, 0, run.stderr);
-  assert.match(run.stdout, /7 selection scenarios passed/);
+  assert.match(run.stdout, /17 selection scenarios passed/);
 });
 
 test("native build embeds only validated Cue settings and clears obsolete values", () => {

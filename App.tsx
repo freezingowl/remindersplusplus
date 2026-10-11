@@ -78,6 +78,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isCompanionActive, setIsCompanionActive] = useState(false);
   const [isCompanionBusy, setIsCompanionBusy] = useState(false);
+  const [companionPushStatus, setCompanionPushStatus] = useState("");
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
   const voiceFinishing = useRef(false);
@@ -110,7 +111,11 @@ export default function App() {
         if (nativeConfig) applyNativeCloudConfiguration(nativeConfig);
         await refreshCompanion();
         setReminders(storedReminders);
-        if (hasCompanion) setIsCompanionActive((await companionStatus()).active);
+        if (hasCompanion) {
+          const status = await companionStatus();
+          setIsCompanionActive(status.active);
+          setCompanionPushStatus(status.pushStatus ?? "");
+        }
         setIsReady(true);
       } catch (error) {
         setLoadError(error instanceof Error ? error.message : "Couldn’t load your reminders. Reopen Cue to try again.");
@@ -130,7 +135,9 @@ export default function App() {
     async function sync(): Promise<void> {
       try {
         setReminders(await loadReminders());
-        setIsCompanionActive((await companionStatus()).active);
+        const status = await companionStatus();
+        setIsCompanionActive(status.active);
+        setCompanionPushStatus(status.pushStatus ?? "");
       } catch (error) {
         Alert.alert("Couldn’t refresh Cue", error instanceof Error ? error.message : "Please reopen Cue.");
       }
@@ -151,7 +158,10 @@ export default function App() {
 
   function openSettings(): void {
     setIsSettingsOpen(true);
-    if (hasCompanion) void companionStatus().then((status) => setIsCompanionActive(status.active)).catch(() => {});
+    if (hasCompanion) void companionStatus().then((status) => {
+      setIsCompanionActive(status.active);
+      setCompanionPushStatus(status.pushStatus ?? "");
+    }).catch(() => {});
   }
 
   async function toggleCompanion(enabled: boolean): Promise<void> {
@@ -159,6 +169,7 @@ export default function App() {
     try {
       const status = await setCompanionEnabled(enabled);
       setIsCompanionActive(status.active);
+      setCompanionPushStatus(status.pushStatus ?? "");
     } catch (error) {
       Alert.alert("Couldn’t change the companion", error instanceof Error ? error.message : "Open iPhone Settings and allow Live Activities for Cue.");
     } finally {
@@ -180,7 +191,7 @@ export default function App() {
         setInput("");
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         const added = saved[0];
-        showToast(added?.notificationId ? "Reminder saved and scheduled." : added?.dueAt ? "Reminder saved. Enable notifications for an alert." : "Reminder saved. No time set.");
+        showToast(added?.dueAt ? "Reminder saved to Cue." : "Reminder saved. No time set.");
       } catch (error) {
         Alert.alert("Couldn’t add reminder", error instanceof Error ? error.message : "Please try again.");
       } finally {
@@ -423,6 +434,7 @@ export default function App() {
         companionAvailable={hasCompanion}
         companionActive={isCompanionActive}
         companionBusy={isCompanionBusy}
+        companionPushStatus={companionPushStatus}
         onToggleCompanion={(enabled) => void toggleCompanion(enabled)}
         visible={isSettingsOpen}
       />

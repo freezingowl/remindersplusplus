@@ -1,13 +1,18 @@
 import ActivityKit
 import Foundation
 import Security
+import UIKit
 import UserNotifications
 
 actor CueCompanionService {
     static let shared = CueCompanionService()
     static let changed = Notification.Name("CueRemindersChanged")
     private let enabledKey = "cue.companion.enabled"
-    private let pinnedKey = "cue.companion.pinned"
+    private let reviewingKey = "cue.companion.reviewing"
+    private let reviewAnchorKey = "cue.companion.reviewAnchor"
+    private var deadlineTask: Task<Void, Never>?
+    private var pushObservers: [String: Task<Void, Never>] = [:]
+    private var pushStatus = "Automatic updates need Apple push setup."
     private var isCapturing = false
     private var revision = 0
 
@@ -23,7 +28,18 @@ actor CueCompanionService {
 
     func loadJSON() throws -> String? {
         guard FileManager.default.fileExists(atPath: storeURL.path) else { return nil }
+        try silenceLegacyAlerts()
         return try json(load())
+    }
+
+    private func silenceLegacyAlerts() throws {
+        var reminders = try load()
+        let ids = reminders.compactMap(\.notificationId)
+        guard !ids.isEmpty else { return }
+        // Cancel only alerts associated with Cue's saved reminders, preserving tasks.
+        for index in reminders.indices { reminders[index].notificationId = nil }
+        try write(reminders)
+        for id in ids { cancel(id) }
     }
 
     func seed(_ input: String) throws -> String {
@@ -43,28 +59,29 @@ actor CueCompanionService {
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
-    func status() -> [String: Bool] {
+    func status() -> [String: Any] {
         ["enabled": UserDefaults.standard.bool(forKey: enabledKey),
          "allowed": ActivityAuthorizationInfo().areActivitiesEnabled,
-         "active": Activity<CueActivityAttributes>.activities.contains { $0.activityState == .active || $0.activityState == .stale }]
+         "active": Activity<CueActivityAttributes>.activities.contains { $0.activityState == .active || $0.activityState == .stale },
+         "pushStatus": pushStatus]
     }
 
-    func setEnabled(_ enabled: Bool) async throws -> [String: Bool] {
+    func setEnabled(_ enabled: Bool) async throws -> [String: Any] {
         if enabled {
             guard ActivityAuthorizationInfo().areActivitiesEnabled else {
                 throw CueCompanionError.message("Allow Live Activities for Cue in iPhone Settings.")
             }
-            let settings = await UNUserNotificationCenter.current().notificationSettings()
-            if settings.authorizationStatus == .notDetermined {
-                _ = try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
-            }
+            try silenceLegacyAlerts()
             UserDefaults.standard.set(true, forKey: enabledKey)
             try await restore(startIfNeeded: true)
         } else {
             revision += 1
+            deadlineTask?.cancel()
             UserDefaults.standard.set(false, forKey: enabledKey)
             for activity in Activity<CueActivityAttributes>.activities {
                 await activity.end(nil, dismissalPolicy: .immediate)
+                await syncPush(activity, stop: true)
+                pushObservers.removeValue(forKey: activity.id)?.cancel()
             }
         }
         return status()
@@ -73,34 +90,168 @@ actor CueCompanionService {
     private func restingState() throws -> CueActivityAttributes.ContentState {
         let reminders = try load()
         let now = Date()
-        let selected = CueSelection.reminder(reminders, preferredID: UserDefaults.standard.string(forKey: pinnedKey), now: now)
-        let next = CueSelection.nextDue(reminders, now: now)
-        UserDefaults.standard.set(selected?.id, forKey: pinnedKey)
-        return .init(
-            phase: selected?.dueDate.map { $0 <= now ? "due" : "ready" } ?? "ready",
+        let state = displayState(reminders, now: now)
+        var result = state
+        if let transition = CueSelection.nextChange(reminders, now: now) {
+            let next = displayState(reminders, now: transition)
+            result.nextTitle = next.title
+            result.nextID = next.reminderID
+            result.nextDueAt = next.dueAt
+            result.nextPhase = next.phase
+            result.nextDetail = next.detail
+            result.nextMissedCount = next.missedCount
+            result.nextReviewingMissed = next.reviewingMissed
+            result.nextTransitionAt = transition
+        }
+        return result
+    }
+
+    private func displayState(_ reminders: [CueReminder], now: Date) -> CueActivityAttributes.ContentState {
+        let current = CueSelection.reminder(reminders, now: now)
+        let missed = CueSelection.missed(reminders, now: now)
+        let reviewingID = UserDefaults.standard.string(forKey: reviewingKey)
+        let anchor = UserDefaults.standard.string(forKey: reviewAnchorKey)
+        let reviewing = reviewingID != nil && current?.id == anchor && !missed.isEmpty
+        let selected = reviewing ? missed.first(where: { $0.id == reviewingID }) ?? missed.first : current
+        let isMissed = missed.contains { $0.id == selected?.id }
+        return .init(phase: isMissed ? "missed" : selected?.dueDate.map { $0 <= now ? "due" : "ready" } ?? "ready",
             title: selected?.title ?? "Nothing waiting",
             detail: selected?.dueDate.map(CueDates.label) ?? (selected == nil ? "" : "No time set"),
             reminderID: selected?.id, dueAt: selected?.dueDate,
-            nextTitle: next?.title, nextID: next?.id, nextDueAt: next?.dueDate
-        )
+            missedCount: missed.count, reviewingMissed: reviewing)
     }
 
     private func publish(_ state: CueActivityAttributes.ContentState, startIfNeeded: Bool = false) async throws {
         guard UserDefaults.standard.bool(forKey: enabledKey) else { return }
         // The upcoming snapshot becomes outdated at its next deadline. The widget
         // can then render the preloaded due candidate; this never executes app code.
-        let staleDate = state.phase == "ready" ? state.nextDueAt : nil
+        let staleDate = ["processing", "saved", "error"].contains(state.phase) ? nil : state.nextTransitionAt
         let content = ActivityContent(state: state, staleDate: staleDate)
-        if let activity = Activity<CueActivityAttributes>.activities.first(where: { $0.activityState == .active || $0.activityState == .stale }) {
+        let activity: Activity<CueActivityAttributes>
+        if let existing = Activity<CueActivityAttributes>.activities.first(where: { $0.activityState == .active || $0.activityState == .stale }) {
+            activity = existing
             await activity.update(content)
         } else if startIfNeeded && ActivityAuthorizationInfo().areActivitiesEnabled {
-            _ = try Activity.request(attributes: CueActivityAttributes(sessionID: UUID().uuidString), content: content, pushType: nil)
+            let sessionID = UUID().uuidString
+            activity = try Activity.request(attributes: CueActivityAttributes(sessionID: sessionID), content: content, pushType: .token)
+            UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "cue.activity.start.\(sessionID)")
+        } else { return }
+        watchPushToken(activity)
+        if !["processing", "saved", "error"].contains(state.phase) { await syncPush(activity) }
+    }
+
+    private func watchPushToken(_ activity: Activity<CueActivityAttributes>) {
+        guard pushObservers[activity.id] == nil else { return }
+        pushObservers[activity.id] = Task {
+            for await _ in activity.pushTokenUpdates {
+                guard !Task.isCancelled else { return }
+                await self.syncPush(activity)
+            }
+        }
+    }
+
+    private func syncPush(_ activity: Activity<CueActivityAttributes>, stop: Bool = false) async {
+        if !stop && ["processing", "saved", "error"].contains(activity.content.state.phase) { return }
+        guard stop || activity.pushToken != nil else {
+            pushStatus = "Waiting for Apple’s Live Activity token. Restart the companion after upgrading an older build."
+            return
+        }
+        do {
+            guard let settings = try cloudConfiguration(), let origin = settings["url"], let token = settings["token"],
+                  let url = URL(string: "\(origin)/v1/live-activity") else { return }
+            var owner = try CueCompanionKeychain.read(account: "activity-owner")
+            if owner.isEmpty {
+                owner = (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
+                try CueCompanionKeychain.save(owner, account: "activity-owner")
+            }
+            let sequenceKey = "cue.activity.revision"
+            let sequence = UserDefaults.standard.integer(forKey: sequenceKey) + 1
+            UserDefaults.standard.set(sequence, forKey: sequenceKey)
+            var body: [String: Any] = ["sessionID": activity.attributes.sessionID, "ownerSecret": owner,
+                "revision": sequence, "stop": stop]
+            if !stop {
+                guard let pushToken = activity.pushToken else { return }
+                let reminders = try load().filter { !$0.completed }
+                guard reminders.count <= 128 else { throw CueCompanionError.message("Automatic updates support up to 128 open reminders.") }
+                let startKey = "cue.activity.start.\(activity.attributes.sessionID)"
+                let storedStart = UserDefaults.standard.double(forKey: startKey)
+                let start = storedStart > 0 ? storedStart : Date().timeIntervalSince1970
+                if storedStart == 0 { UserDefaults.standard.set(start, forKey: startKey) }
+                body["expiresAt"] = (start + 8 * 3600) * 1000
+                body["environment"] = Bundle.main.object(forInfoDictionaryKey: "CueAPNsEnvironment") as? String ?? "development"
+                body["pushToken"] = pushToken.map { String(format: "%02x", $0) }.joined()
+                body["reminders"] = reminders.map { reminder -> [String: Any] in
+                    ["id": reminder.id, "title": reminder.title,
+                     "dueAt": reminder.dueDate.map { $0.timeIntervalSince1970 * 1000 } as Any? ?? NSNull(),
+                     "createdAt": (CueDates.parse(reminder.createdAt) ?? .distantPast).timeIntervalSince1970 * 1000]
+                }
+                body["reviewingID"] = UserDefaults.standard.string(forKey: reviewingKey) as Any? ?? NSNull()
+                body["reviewAnchor"] = UserDefaults.standard.string(forKey: reviewAnchorKey) as Any? ?? NSNull()
+            }
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.timeoutInterval = 6
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
+                let failure = try? JSONDecoder().decode(CloudFailure.self, from: data)
+                if failure?.error.code == "push_not_configured" {
+                    throw CueCompanionError.message("Automatic updates need Apple push setup. Reminders are saved; open Cue to refresh.")
+                }
+                throw CueCompanionError.message(failure?.error.message ?? "Automatic updates could not be scheduled. Reopen Cue to retry.")
+            }
+            if UserDefaults.standard.integer(forKey: sequenceKey) == sequence {
+                let result = try JSONDecoder().decode(PushRegistration.self, from: data)
+                guard result.ok, stop || result.scheduled else {
+                    throw CueCompanionError.message("Restart Cue’s companion to begin a new push session.")
+                }
+                pushStatus = stop ? "Automatic updates stopped." : result.lastFailure ?? "Automatic updates scheduled with Apple push."
+            }
+        } catch {
+            pushStatus = String(error.localizedDescription.prefix(300))
         }
     }
 
     func restore(startIfNeeded: Bool = false) async throws {
         revision += 1
         try await publish(restingState(), startIfNeeded: startIfNeeded)
+        await scheduleForegroundRefresh()
+    }
+
+    private func scheduleForegroundRefresh() async {
+        deadlineTask?.cancel()
+        guard UserDefaults.standard.bool(forKey: enabledKey),
+              await MainActor.run(body: { UIApplication.shared.applicationState == .active }),
+              let reminders = try? load(),
+              let date = CueSelection.nextChange(reminders, now: Date()) else { return }
+        deadlineTask = Task {
+            do { try await Task.sleep(nanoseconds: UInt64(max(0, date.timeIntervalSinceNow) * 1_000_000_000)) }
+            catch { return }
+            guard await MainActor.run(body: { UIApplication.shared.applicationState == .active }) else { return }
+            try? await self.refresh()
+        }
+    }
+
+    func showMissed() async throws {
+        let reminders = try load()
+        let now = Date()
+        let missed = CueSelection.missed(reminders, now: now)
+        guard !missed.isEmpty else { try await resume(); return }
+        let anchor = CueSelection.reminder(reminders, now: now)?.id
+        let previous = UserDefaults.standard.string(forKey: reviewAnchorKey) == anchor ? UserDefaults.standard.string(forKey: reviewingKey) : nil
+        let index = missed.firstIndex { $0.id == previous }
+        let selected = missed[index.map { ($0 + 1) % missed.count } ?? 0]
+        UserDefaults.standard.set(selected.id, forKey: reviewingKey)
+        UserDefaults.standard.set(anchor, forKey: reviewAnchorKey)
+        try await restore()
+    }
+
+    func resume() async throws {
+        UserDefaults.standard.removeObject(forKey: reviewingKey)
+        UserDefaults.standard.removeObject(forKey: reviewAnchorKey)
+        try await restore()
     }
 
     func refresh() async throws {
@@ -125,6 +276,7 @@ actor CueCompanionService {
         isCapturing = true
         defer { isCapturing = false }
         revision += 1
+        try silenceLegacyAlerts()
         // First capture starts a session. Preserve an explicit in-app opt-out;
         // invoking the companion's Shortcut explicitly enables it again.
         if source == "shortcut" || UserDefaults.standard.object(forKey: enabledKey) == nil {
@@ -133,21 +285,12 @@ actor CueCompanionService {
         await showFeedback(phase: "processing", title: "Adding reminder…", startIfNeeded: true)
         do {
             let parsed = try await parse(text)
-            var reminder = CueReminder(id: UUID().uuidString, title: parsed.title, note: parsed.note,
+            let reminder = CueReminder(id: UUID().uuidString, title: parsed.title, note: parsed.note,
                 dueAt: parsed.dueAt.isEmpty ? nil : parsed.dueAt, completed: false,
                 createdAt: CueDates.string(Date()), source: source)
             if let date = reminder.dueDate, date <= Date() {
                 throw CueCompanionError.message("That time has passed. Include a future date and time.")
             }
-            var notificationFailed = false
-            if source != "shortcut", reminder.dueDate != nil {
-                let center = UNUserNotificationCenter.current()
-                if await center.notificationSettings().authorizationStatus == .notDetermined {
-                    _ = try? await center.requestAuthorization(options: [.alert, .sound])
-                }
-            }
-            do { reminder.notificationId = try await schedule(reminder) }
-            catch { notificationFailed = true }
             // Reload after inference: completion or deletion during capture must survive.
             var reminders = try load()
             reminders.insert(reminder, at: 0)
@@ -157,10 +300,9 @@ actor CueCompanionService {
                 throw error
             }
             let detail = reminder.dueDate.map(CueDates.label) ?? "No time set"
-            let alertsOff = reminder.dueAt != nil && (reminder.notificationId == nil || notificationFailed)
             revision += 1
             let feedbackRevision = revision
-            await showFeedback(phase: "saved", title: "Added: \(reminder.title)", detail: alertsOff ? "\(detail) · alerts unavailable" : detail)
+            await showFeedback(phase: "saved", title: "Added: \(reminder.title)", detail: detail)
             // Await the acknowledgement within the user-triggered execution. No background timer.
             try? await Task.sleep(nanoseconds: 1_300_000_000)
             if revision == feedbackRevision { try? await restore() }
@@ -179,13 +321,8 @@ actor CueCompanionService {
         var reminders = try load()
         guard let originalIndex = reminders.firstIndex(where: { $0.id == id }) else { return try json(reminders) }
         let oldNotification = reminders[originalIndex].notificationId
-        let newNotification = completed ? nil : try await schedule(reminders[originalIndex])
-        // Scheduling can suspend the actor. Reload before changing the one task.
-        reminders = try load()
-        guard let index = reminders.firstIndex(where: { $0.id == id }) else {
-            cancel(newNotification)
-            return try json(reminders)
-        }
+        let newNotification: String? = nil
+        let index = originalIndex
         reminders[index].completed = completed
         reminders[index].notificationId = newNotification
         do { try write(reminders) }
@@ -209,22 +346,6 @@ actor CueCompanionService {
         guard let id else { return }
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
         UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [id])
-    }
-
-    private func schedule(_ reminder: CueReminder) async throws -> String? {
-        guard let date = reminder.dueDate, date > Date() else { return nil }
-        let center = UNUserNotificationCenter.current()
-        let settings = await center.notificationSettings()
-        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return nil }
-        let content = UNMutableNotificationContent()
-        content.title = "Cue"
-        content.body = reminder.title
-        content.sound = .default
-        content.userInfo = ["type": "reminder", "reminderId": reminder.id]
-        let id = "cue.reminder.\(reminder.id)"
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, date.timeIntervalSinceNow), repeats: false)
-        try await center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
-        return id
     }
 
     // Native build settings make Shortcuts independent of JS hydration/Metro.
@@ -253,8 +374,9 @@ actor CueCompanionService {
 
     private struct Parsed: Decodable { var title: String; var note: String; var dueAt: String }
     private struct CloudReminder: Decodable { var reminder: Parsed }
+    private struct PushRegistration: Decodable { var ok: Bool; var scheduled: Bool; var lastFailure: String? }
     private struct CloudFailure: Decodable {
-        struct Detail: Decodable { var message: String }
+        struct Detail: Decodable { var message: String; var code: String? }
         var error: Detail
     }
 
@@ -316,8 +438,8 @@ enum CueCompanionKeychain {
         }
     }
 
-    static func save(_ token: String) throws {
-        let lookup = query()
+    static func save(_ token: String, account: String = "cloud-access") throws {
+        let lookup = query(account: account)
         if token.isEmpty {
             let status = SecItemDelete(lookup as CFDictionary)
             guard status == errSecSuccess || status == errSecItemNotFound else {
@@ -332,8 +454,8 @@ enum CueCompanionKeychain {
         guard status == errSecSuccess else { throw CueCompanionError.message("Couldn’t save Cue’s cloud access settings.") }
     }
 
-    static func read() throws -> String {
-        var lookup = query()
+    static func read(account: String = "cloud-access") throws -> String {
+        var lookup = query(account: account)
         lookup[kSecReturnData as String] = true
         lookup[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?

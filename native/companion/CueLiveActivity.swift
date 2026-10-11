@@ -30,13 +30,16 @@ private struct CueCard: View {
     let context: ActivityViewContext<CueActivityAttributes>
     @Environment(\.isLuminanceReduced) private var reducedLuminance
 
-    private var promoted: Bool { context.state.phase == "ready" && context.isStale && context.state.nextID != nil }
-    private var phase: String { promoted ? "due" : context.state.phase }
+    private var promoted: Bool { !["processing", "saved", "error"].contains(context.state.phase) && context.isStale && (context.state.nextTransitionAt != nil || context.state.nextID != nil) }
+    private var phase: String { promoted ? context.state.nextPhase ?? "due" : context.state.phase }
     private var title: String { promoted ? context.state.nextTitle ?? context.state.title : context.state.title }
     private var reminderID: String? { promoted ? context.state.nextID : context.state.reminderID }
     private var dueAt: Date? { promoted ? context.state.nextDueAt : context.state.dueAt }
     private var temporary: Bool { ["processing", "saved", "error"].contains(phase) }
     private var idle: Bool { !temporary && reminderID == nil }
+    private var missedCount: Int { promoted ? context.state.nextMissedCount ?? 0 : context.state.missedCount ?? 0 }
+    private var reviewingMissed: Bool { promoted ? context.state.nextReviewingMissed == true : context.state.reviewingMissed == true }
+    private var detail: String { promoted ? context.state.nextDetail ?? "" : context.state.detail }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -44,6 +47,21 @@ private struct CueCard: View {
                 CueMark(phase: phase)
                 Text("cue").font(.system(size: 11, weight: .medium, design: .rounded))
                 Spacer()
+                if !temporary, reviewingMissed {
+                    Button(intent: ResumeCueReminderIntent()) { Text("Back") }
+                        .buttonStyle(.plain).font(.system(size: 11, weight: .medium))
+                        .accessibilityLabel("Return to current reminder")
+                }
+                if !temporary, missedCount > 0 {
+                    Button(intent: ShowCueMissedReminderIntent()) {
+                        Text("\(missedCount) missed")
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 7).padding(.vertical, 4)
+                            .background(.primary.opacity(0.08), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Show \(missedCount) missed \(missedCount == 1 ? "reminder" : "reminders")")
+                }
                 if phase == "due" { Text("NOW").font(.system(size: 10, weight: .semibold)).tracking(1) }
             }
             .foregroundStyle(.secondary)
@@ -68,6 +86,13 @@ private struct CueCard: View {
                 if !context.state.detail.isEmpty {
                     Text(context.state.detail).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(2)
                 }
+            } else if phase == "missed", let dueAt {
+                HStack(spacing: 5) {
+                    Text("Missed")
+                    Text("·")
+                    Text(dueAt, style: .time)
+                }
+                .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
             } else if phase != "due", let dueAt {
                 HStack(spacing: 5) {
                     Text(dueAt, style: .time)
@@ -75,8 +100,8 @@ private struct CueCard: View {
                     Text(dueAt, style: .timer).monospacedDigit()
                 }
                 .font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-            } else if !context.state.detail.isEmpty && phase != "due" {
-                Text(context.state.detail).font(.system(size: 12)).foregroundStyle(.secondary)
+            } else if !detail.isEmpty && phase != "due" {
+                Text(detail).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 16)
@@ -100,7 +125,7 @@ struct CueLiveActivity: Widget {
             } compactLeading: {
                 CueMark(phase: context.state.phase)
             } compactTrailing: {
-                if let due = context.state.nextDueAt, context.state.phase == "ready", !context.isStale {
+                if let due = context.state.dueAt, context.state.phase == "ready", !context.isStale {
                     Text(due, style: .timer).monospacedDigit().frame(maxWidth: 48)
                 } else {
                     CueMark(phase: context.isStale ? "due" : context.state.phase)

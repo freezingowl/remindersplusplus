@@ -7,16 +7,33 @@ struct AddCueReminderIntent: LiveActivityIntent {
     @Parameter(title: "Reminder", requestValueDialog: "What should I remind you about?")
     var text: String
 
-    func perform() async throws -> some IntentResult & ProvidesDialog {
+    func perform() async throws -> some IntentResult {
         #if !CUE_WIDGET_EXTENSION
-        let result = try await CueCompanionService.shared.capture(text, source: "shortcut")
-        let reminder = result.reminder
-        let time = reminder.dueDate.map(CueDates.label) ?? "No time set"
-        let alerts = reminder.dueAt != nil && reminder.notificationId == nil ? " Alerts are off; allow Cue notifications." : ""
-        return .result(dialog: "Added \(reminder.title). \(time).\(alerts)")
+        _ = try await CueCompanionService.shared.capture(text, source: "shortcut")
         #else
-        return .result(dialog: "Open Cue to add this reminder.")
+        throw CueCompanionError.message("Open the installed Cue app and try again.")
         #endif
+        return .result()
+    }
+}
+
+struct ShowCueMissedReminderIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Show missed Cue reminder"
+    func perform() async throws -> some IntentResult {
+        #if !CUE_WIDGET_EXTENSION
+        try await CueCompanionService.shared.showMissed()
+        #endif
+        return .result()
+    }
+}
+
+struct ResumeCueReminderIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Return to current Cue reminder"
+    func perform() async throws -> some IntentResult {
+        #if !CUE_WIDGET_EXTENSION
+        try await CueCompanionService.shared.resume()
+        #endif
+        return .result()
     }
 }
 

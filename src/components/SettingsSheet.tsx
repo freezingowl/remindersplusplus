@@ -24,6 +24,7 @@ type SettingsSheetProps = {
   companionAvailable: boolean;
   companionActive: boolean;
   companionBusy: boolean;
+  companionPushStatus: string;
   onToggleCompanion: (enabled: boolean) => void;
 };
 
@@ -34,6 +35,7 @@ export function SettingsSheet({
   companionAvailable,
   companionActive,
   companionBusy,
+  companionPushStatus,
   onToggleCompanion,
 }: SettingsSheetProps) {
   const [checking, setChecking] = useState(false);
@@ -90,6 +92,8 @@ export function SettingsSheet({
               </Pressable>
             </View>
           ) : null}
+
+          {companionAvailable && companionActive && companionPushStatus ? <Text style={styles.securityText}>{companionPushStatus}</Text> : null}
 
           <Text style={styles.description}>
             {cloudConfigured ? "Cloud settings are installed. Check the connection before your first reminder." : "Cloud AI hasn’t been configured in this build yet."}

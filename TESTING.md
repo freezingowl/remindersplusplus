@@ -4,7 +4,7 @@ The screenshot's **“Cloud AI isn’t configured”** error occurred in the nat
 
 **This local checkout's server setup is complete as of 11 October 2026, 04:58 IST.** The deployed Worker has the D1 binding/schema and matching Cue token; authenticated readiness passed. The exact sushi sentence returned **Make sushi** with a deadline two minutes ahead in **2.524 seconds**. Written-out duration, explicit local time and ambiguous input also passed. Start at **step 3** to install and test on your phone. Steps 1–2 remain here for a fresh deployment or troubleshooting. Backend checks do not create reminders on the phone.
 
-A later read-only audit of the participant's installed iPhone app confirmed all three Back Tap reminders were saved with times. The latest incomplete reminder had no notification scheduled: enable **Settings → Notifications → Cue → Allow Notifications** and create a fresh future reminder. Completing a task removes its notification identifier, so that field cannot prove whether an already-completed task originally had an alert. You do not need to rebuild the working app for the new cloud usage receipt below.
+A later read-only audit confirmed all three participant Back Tap reminders were saved with times. The current update follows the participant's **Live Activity only** preference: it removes the Shortcut success dialog and new iPhone local alerts, adds missed review and a Worker/APNs scheduler. **These native changes require rebuilding/installing Cue.** The existing AI backend works independently; unattended queue switching additionally requires [Apple push setup](worker/APNS.md).
 
 ## 1. Configure a fresh Worker if needed
 
@@ -22,7 +22,7 @@ From the app directory:
 npm run cloud:check
 ```
 
-Expect `"connected": true`. This checks the Cue access token and actual D1 schema without an OpenAI call or quota consumption. It does not prove the OpenAI key/model works. If it fails, fix the reported server setting before continuing.
+Expect `"connected": true`. This checks the Cue access token and actual D1 schema without an OpenAI call or quota consumption. It also reports `liveActivity.configured` and missing APNs setting names. AI can work while push is not configured. For automatic changes while Cue is closed, finish [worker/APNS.md](worker/APNS.md) and expect that flag to be true. This does not prove the OpenAI key/model or Apple signing key works; the live tests do.
 
 Then run the user's exact sentence once through OpenAI:
 
@@ -51,8 +51,9 @@ For debugging with a Debug development build instead, its React Native screen re
 
 1. Search your iPhone for and open **Cue** after the installation finishes.
 2. Open the gear/settings sheet and tap **Check cloud connection**. Expect **Connected: access token and quota database verified**. This is a setup check, not an AI completion.
-3. Allow Cue notifications when prompted. Allow Live Activities for Cue in iPhone Settings. If notification permission was denied earlier, enable it in Settings; the OS does not show the initial permission prompt again.
-4. Complete the old **Remind me / No time set** card if it is just a test task. Otherwise leave it: new captures deliberately restore the previous due/upcoming card, so a successful new reminder may be saved without replacing that older displayed task.
+3. Allow Live Activities for Cue in iPhone Settings. No notification permission is required for the custom iPhone Live Activity-only flow.
+4. Complete old test reminders to isolate this test; preserve any real reminders. The normal card now chooses the latest task in its one-minute due window or the earliest upcoming task. Older unfinished tasks stay in the list and missed badge.
+5. Turn the companion off/on once if it came from an older installed build without push support. With Apple setup complete, Settings should show **Automatic updates scheduled with Apple push**; otherwise it reports what needs attention. A JavaScript reload cannot add push support to the installed binary.
 
 ## 5. First test inside Cue
 
@@ -66,7 +67,7 @@ Submit once. Expect:
 - The Live Activity shows **Adding reminder…**, then **Added: Make sushi** with the time, then the due/upcoming reminder. In-app captures respect an explicitly disabled companion; enable it in Settings if needed.
 - No **Cloud AI isn’t configured** error and no newly saved untimed placeholder.
 
-Lock the phone and wait about two minutes. A local notification should alert you if permitted. The Live Activity's preloaded next task can change to **NOW** when iOS marks its snapshot stale; precise WidgetKit timing still requires device observation. The local notification is the alert mechanism. If you see an acknowledgement that alerts are off, fix notification permission and create a fresh timed test.
+Lock the phone and wait about two minutes. With APNs configured and its schedule registered, the Worker updates this same card to **NOW**, without a notification banner/sound. After one minute unfinished, the task appears in the missed badge. Foreground updates work while Cue is active; the preloaded stale snapshot supplies only one fallback transition. Without Apple push setup, do not assume all future changes happen while Cue is suspended.
 
 ## 6. Test the Shortcut, then Back Tap
 
@@ -75,11 +76,11 @@ In Apple's Shortcuts app:
 1. Create a shortcut named **Add to Cue**.
 2. Add **Ask for Input**, with type **Text** and a prompt such as “What should Cue remember?”
 3. Add **Cue → Add Cue reminder**. Tap its **Reminder** field and select the **Provided Input** variable from Ask for Input. Pass the variable, not a fixed literal sentence.
-4. Run the shortcut in Shortcuts while the phone is unlocked. Enter the sushi sentence. Expect a success receipt naming the task and its time, a new card in Cue, and the Live Activity acknowledgement. Failures show their error rather than reporting success.
+4. Run it unlocked with the sushi sentence. Expect a new card in Cue and the Live Activity acknowledgement; the action now finishes silently, without the large success dialog/Done button. Remove any extra **Show Result/Show Alert** action from your Shortcut. iOS still owns the text-input, progress, authentication and error UI.
 5. Only after that works, choose **Add to Cue** under **Settings → Accessibility → Touch → Back Tap → Double Tap** or **Triple Tap**.
 6. Trigger Back Tap while unlocked and repeat with a fresh timed reminder. Locked-phone text input/authentication is controlled by iOS; verify it separately after the unlocked flow works.
 
-Do not complete the new reminder before its deadline if you want to test the alert: completion cancels it. Multiple test captures create separate reminders/alerts.
+For the requested sequence, add a fresh task **in 2 minutes**, then another **in 3 minutes**, and leave them incomplete. Each relative time starts at its own submission. Lock the phone: the first should become NOW, then the second should replace it and show **1 missed** for the first. Tap the badge to review the first on the same card; **Back** returns to the current task. Open Cue and confirm both entries exist. Complete the missed task to check that its badge contribution disappears. The full procedure and push setup are in [worker/APNS.md](worker/APNS.md).
 
 ## Read the result correctly
 
@@ -91,9 +92,10 @@ Do not complete the new reminder before its deadline if you want to test the ale
 | `quota_unavailable` | Create the SQL table in the database bound as `CUE_DB`. |
 | `ai_configuration` | Check the OpenAI key and model access in the Worker. |
 | HTTP 429 | Wait for the request window to reset. Global limits apply across all callers. |
-| Added task with due time, but no alert | Check Cue notification permission; create a fresh test. |
-| Older reminder returns after Added | Expected when another task was already displayed; inspect the saved task in Cue or complete that older test card. |
+| Added task with due time, but no notification | Expected in the custom iPhone build: Live Activity only. |
+| Card does not switch while Cue is closed | Check APNs configuration, signing entitlement and Settings' schedule status; restart an old companion once after upgrade. |
+| Earlier upcoming reminder returns after Added | Expected when it is due sooner than the new task; all saved tasks remain in Cue. |
 
-Each activity can remain active for up to eight hours, and can be dismissed. Updating it does not reset that lifetime; later enabled captures can start a new session. Reminders/notifications persist independently. This is not an always-running process.
+Each activity can remain active for up to eight hours and can be dismissed. Updating does not reset that lifetime; later enabled captures can start a new session. Reminders persist independently. Apple push delivery is subject to connectivity and budgets; Background Refresh is not an exact-time alternative.
 
-Offline tests use mocked OpenAI responses, including one test in the real Workers runtime. Live text AI and three participant-triggered Back Tap saves are verified. The agent's native compilation was unsigned; the participant installed the app. Rendered activity transitions, locked-phone behavior and actual notification delivery still need observation. Voice transcription has not been tested against the live API.
+Offline checks now include 18 AI/sync Worker scenarios, five push scheduler/ES256 scenarios, two real workerd/D1/alarm tests with fake Apple/OpenAI endpoints, three companion checks (17 Swift selection/date cases plus six configuration cases), four path checks, typecheck/lint and unsigned Release app/widget compilation. Live text AI and the earlier three Back Tap saves are verified. Actual APNs delivery, rendered missed badge, removal of the result dialog on the phone, locked-phone behavior and live voice still need the rebuilt app/device test. No installation, Metro or tunnel was started during these changes.

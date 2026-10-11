@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { generateKeyPairSync } from "node:crypto";
 import test from "node:test";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
@@ -48,4 +49,57 @@ test("Workers runtime parses the sushi prompt and refuses upstream redirects", {
     assert.equal(calls, 2);
     assert.equal((await db.prepare("SELECT day_count FROM cue_quotas WHERE route = 'parse'").first()).day_count, 2);
   } finally { await mf.dispose(); }
+});
+
+test("real Workers alarms send successive silent Live Activity updates and enforce ownership", { timeout: 30_000 }, async () => {
+  const token = "fake-test-token-at-least-32-characters";
+  const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "pem" });
+  const updates = [];
+  let finish;
+  let failure;
+  const completed = new Promise((resolve, reject) => { finish = resolve; failure = reject; });
+  const timeout = setTimeout(() => failure(new Error("Scheduled updates did not arrive in the Workers runtime")), 10_000);
+  const options = {
+    host: "127.0.0.1", port: 0, cf: false, logRequests: false, modules: true,
+    script: readFileSync(new URL("../worker/worker.mjs", import.meta.url), "utf8"), compatibilityDate: "2026-10-10",
+    d1Databases: { CUE_DB: "offline-cue-activity-runtime" },
+    durableObjects: { CUE_ACTIVITIES: { className: "CueActivityScheduler", useSQLite: true } },
+    bindings: { OPENAI_API_KEY: "fake-upstream-key", CUE_CLIENT_TOKEN: token,
+      APNS_TEAM_ID: "ABCDEFGHIJ", APNS_KEY_ID: "KLMNOPQRST", APNS_PRIVATE_KEY: key,
+      APNS_BUNDLE_ID: "com.example.cue", APNS_ENVIRONMENT: "development" },
+    outboundService: async (request) => {
+      try {
+        assert.equal(request.url, `https://api.sandbox.push.apple.com/3/device/${"b".repeat(64)}`);
+        assert.equal(request.headers.get("apns-push-type"), "liveactivity");
+        const payload = await request.json();
+        assert.equal(Object.hasOwn(payload.aps, "alert"), false);
+        updates.push(payload.aps["content-state"]);
+        if (updates.length === 2) finish();
+        return new Response(null, { status: 200 });
+      } catch (error) { failure(error); return new Response(null, { status: 500 }); }
+    },
+  };
+  const mf = new Miniflare(convertV4MiniflareOptions(options));
+  try {
+    const db = await mf.getD1Database("CUE_DB");
+    await db.exec(readFileSync(new URL("../worker/schema.sql", import.meta.url), "utf8").replace(/--[^\n]*/g, "").replace(/\n/g, " "));
+    const now = Date.now();
+    const input = { sessionID: "12345678-1234-1234-1234-123456789abc", ownerSecret: "a".repeat(64), revision: 1,
+      pushToken: "b".repeat(64), environment: "development", expiresAt: now + 3_600_000,
+      reminders: [{ id: "first", title: "First", dueAt: now + 500, createdAt: now },
+        { id: "second", title: "Second", dueAt: now + 1800, createdAt: now + 1 }] };
+    const sync = (body, accessToken = token) => mf.dispatchFetch("https://cue.example/v1/live-activity", {
+      method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+    assert.equal((await sync(input, "incorrect")).status, 401);
+    assert.equal((await sync({ ...input, reminders: Array(129).fill(input.reminders[0]) })).status, 400);
+    assert.equal((await sync(input)).status, 200);
+    assert.equal((await sync({ ...input, revision: 2, ownerSecret: "c".repeat(64) })).status, 403);
+    await completed;
+    assert.deepEqual(updates.map((item) => item.reminderID), ["first", "second"]);
+    assert.equal(updates[1].missedCount, 1);
+    assert.equal((await db.prepare("SELECT day_count FROM cue_activity_quotas WHERE route='activity'").first()).day_count, 2);
+    assert.equal(await db.prepare("SELECT route FROM cue_quotas LIMIT 1").first(), null);
+    assert.equal((await sync({ ...input, revision: 3, stop: true })).status, 200);
+  } finally { clearTimeout(timeout); await mf.dispose(); }
 });

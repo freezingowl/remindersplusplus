@@ -1,6 +1,6 @@
 # Cue
 
-Cue is a calm, card-based personal reminder app for iOS and Android. Write a thought naturally — or speak it — and Cue turns it into a reminder card, understands an optional date and time with OpenAI, and schedules a local notification when it has one.
+Cue is a calm, card-based personal reminder app for iOS and Android. Write a thought naturally — or speak it — and Cue turns it into a reminder card and understands an optional date and time with OpenAI. The custom iPhone app uses its Live Activity alone; Expo Go and Android retain local notification alerts.
 
 Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 October 2026.
 
@@ -10,10 +10,11 @@ Built from scratch for the DevDay Exchange Community Hackathon: Kochi, 10–11 O
 - Records up to about 60 seconds from the in-app microphone and sends it through the cloud Worker for transcription.
 - Uses structured OpenAI output to turn natural language such as “Call Mum tomorrow at 8 PM” into a title, detail, and due time.
 - Saves reminders on the device so the list survives a restart.
-- Schedules local notifications for future due times when notification permission is granted.
+- Shows timed reminders on the custom iPhone Live Activity without duplicate notification alerts; Expo Go/Android schedule local alerts when permitted.
 - Lets people mark cards complete or long-press a card to remove it.
 - Routes all AI calls through a rate-limited Cloudflare Worker; the OpenAI key stays in Cloudflare Secrets.
-- Adds a minimal native Lock Screen companion and a Shortcuts action in custom iPhone builds: tiny face mark, processing/added feedback, and one due or upcoming reminder.
+- Adds a minimal native Lock Screen companion and a quiet Shortcuts action in custom iPhone builds: tiny face mark, processing/added feedback, one due/upcoming reminder and a tappable missed badge.
+- Includes a Worker/APNs deadline scheduler for the same activity; Apple signing-key setup and a new native build are required. See [worker/APNS.md](worker/APNS.md).
 
 ## Run the app
 
@@ -110,34 +111,34 @@ AI capture is cloud-only. Missing configuration, offline/network failures, and r
 
 The participant’s local checkout is now connected to [the deployed Worker](https://floral-frost-2cd1.ajaytcr007.workers.dev/health). Wrangler created `cue-ai-limits` in APAC, initialized its quota table and bound it as **CUE_DB**; the Worker’s Cue access token matches the ignored local `.env`, and the existing OpenAI secret was preserved. On 11 October 2026 at 04:58 IST, authenticated readiness and live AI parsing passed: the exact sushi prompt returned **Make sushi**, due two minutes ahead, in **2.524 seconds**. Written-out duration, explicit local clock time and ambiguous-time checks also passed. These requests create no reminder on the phone.
 
-For a new installation, follow [TESTING.md](TESTING.md), starting at step 3 for this configured checkout. The native bootstrap previously passed unsigned app/widget compilation and bundle checks. A prior signed CLI attempt failed at widget signing (`errSecInternalComponent`); resolve signing in Xcode for both targets if necessary. The participant subsequently installed Cue: a read-only iPhone audit confirmed three timed Back Tap reminders were saved, with two marked complete. The latest incomplete reminder had no notification scheduled; allow Cue notifications and create a fresh future test. Rendered Live Activity behavior and actual alert delivery still need observation. No phone installation or Metro/ngrok server was started by the agent during this audit.
+For a new installation, follow [TESTING.md](TESTING.md). A prior signed CLI attempt failed at widget signing (`errSecInternalComponent`); resolve signing in Xcode for both targets if necessary. The participant subsequently installed Cue, and a read-only iPhone audit confirmed three timed Back Tap saves. The newer Live Activity-only/missed/push changes require another native rebuild and [APNs setup](worker/APNS.md); they are not yet verified on that installed phone. No installation or Metro/ngrok server was started by the agent during this update.
 
 `npm run cloud:check -- --parse` now also reports the real OpenAI model, request/response IDs, organization identifier and token counts in an `ai` receipt. One live verification returned 378 input tokens, zero cached input tokens and 30 output tokens (408 total) in 2.815 seconds. At the listed standard input/output rates, that is approximately $0.0000528 before any other billing adjustments, so a two-decimal spend display may look unchanged. Check the [Usage dashboard](https://platform.openai.com/usage) for the account/project owning the Worker's OpenAI key, using a date range covering 10–11 October. The participant's three saved captures occurred at 23:44–23:48 UTC on 10 October (05:14–05:18 IST on 11 October). Exact historical token counts were not retained; quota counters include failed attempts and are not a billing ledger.
 
 ## Demo flow
 
 1. Open Cue and type: `Remind me to call Mum tomorrow at 8 PM`.
-2. Tap the up-arrow. With the cloud configured, Cue creates a card with a parsed time and asks for notification permission when it schedules it.
+2. Tap the up-arrow. With the cloud configured, Cue creates a card with a parsed time; the custom iPhone app acknowledges it on the Live Activity without requesting notification permission.
 3. Tap a card to complete it; it becomes a warm red completion card and cancels its pending notification.
 4. Tap the microphone, speak a reminder, then tap the mic again. Cue transcribes it and adds the resulting card automatically.
 5. Long-press a card to remove it.
 
 ## Lock Screen companion and Back Tap
 
-1. Complete [TESTING.md](TESTING.md) through the in-app capture check: verify the Worker, sync the cloud environment and install the custom iPhone app. Open it to check the connection and grant permissions. The first in-app capture starts **Lock Screen companion** automatically; you can also start it from Settings. Allow Live Activities and notifications when prompted. An explicit off setting is respected for in-app captures.
+1. Complete [TESTING.md](TESTING.md) through the in-app capture check: verify the Worker, sync the cloud environment and install the custom iPhone app. The first in-app capture starts **Lock Screen companion** automatically; you can also start it from Settings. Allow Live Activities in iPhone Settings. An explicit off setting is respected for in-app captures. Configure [Apple push updates](worker/APNS.md) for unattended deadline changes.
 2. In Apple's **Shortcuts** app, create a shortcut with **Ask for Input**, using input type **Text**. Add **Cue → Add Cue reminder** and pass the provided input into its **Reminder** parameter. Save it as “Add to Cue.”
 3. In iPhone **Settings → Accessibility → Touch → Back Tap**, assign that shortcut to Double Tap or Triple Tap. Start testing with the phone unlocked; the input sheet and authentication behavior while locked need physical-device verification.
-4. Back Tap and enter a clear sentence such as `Remind me to call Mum tomorrow at 8 PM`. The native action sends it to the Worker, saves its title and optional timezone-aware due date into Cue's store, and schedules a local notification if permitted.
+4. Back Tap and enter a clear sentence such as `Remind me to call Mum tomorrow at 8 PM`. The native action sends it to the Worker, saves its title and optional timezone-aware due date into Cue's store and updates the card. It returns silently after saving, without the extra success dialog/Done button. Remove any separate Show Result/Show Alert action in your Shortcut; iOS still controls input, authentication, progress and error UI.
 
 The card uses the system's default translucent Lock Screen background, allowing iOS to choose its native appearance. It does not put an opaque colored panel over that surface or assume the app-only `glassEffect` modifier works inside a widget. Actual Liquid Glass appearance depends on the OS and needs device review.
 
-With nothing waiting, the card collapses to the small face and “cue” mark. During capture, the main text reads **Adding reminder…**; successful persistence briefly shows **Added: [task]** with its time, then restores the previous incomplete reminder. A due reminder takes priority over upcoming tasks. Errors show a short message and restore the card. The small mark changes with the state, with brief transitions rather than a continuously animated mascot. Tap the completion circle to finish the displayed task and reveal the next one. Opening Cue again also synchronizes Shortcut-created tasks into the app list.
+With nothing upcoming, the card collapses to the small face and “cue” mark, retaining a missed badge when needed. Capture shows **Adding reminder…**, then briefly **Added: [task]** and its time, then restores the current due or earliest upcoming task. The latest newly due reminder takes priority. An unfinished reminder becomes missed when a newer due task replaces it or after its one-minute NOW window. Tap **1 missed** to review it on the same card, tap again to cycle missed tasks, or tap **Back** to resume. Completion removes it from the missed count. A newer deadline interrupts missed review. Opening Cue synchronizes all Shortcut-created tasks and completion states into the existing list; nothing is deleted when missed.
 
-Timing has two separate mechanisms. The OS schedules the actual notification. The Live Activity preloads the earliest upcoming task and sets its `staleDate` to that deadline; when WidgetKit marks that snapshot stale, the view can display that preloaded task as **NOW**. This is a narrow visual transition, not app execution or a general queue scheduler. Further ranking/data updates occur when Cue, its Shortcut, or a completion action runs. Exact transition timing still needs runtime verification. A backend with ActivityKit push updates is needed for arbitrary unattended changes to the same card; background refresh does not guarantee exact-time execution.
+While Cue is active, a foreground deadline task refreshes the card. When it is suspended, the Worker schedules Durable Object alarms and sends ActivityKit push updates at due times and missed transitions. These update the existing activity with no alert/sound payload. Native registration tracks token changes, replaces the open queue after mutations and uses increasing revisions to reject late writes. The snapshot also preloads one next transition via `staleDate` as a limited fallback; it is not a general scheduler. [Apple explicitly does not guarantee Background Refresh execution at a requested date](https://developer.apple.com/documentation/backgroundtasks/bgtaskrequest/earliestbegindate). APNs connectivity/budgets also prevent hard real-time guarantees. Follow [worker/APNS.md](worker/APNS.md) to configure Apple credentials and verify real delivery; fake-key runtime tests do not establish device delivery.
 
 An active Live Activity lasts **at most eight hours**, and people can dismiss it. Ended content can remain on the Lock Screen for up to four additional hours. Updating the same activity does not renew that limit. Start a new session from Settings or a later capture after it ends (provided the companion is enabled). There is no automatic 24/7 renewal.
 
-The Shortcut needs cloud settings in its installed native build and network access. The Worker handles AI calls and quotas; it does not provide an offline model, reminder sync or APNs scheduling. Ambiguous or missing times remain **No time set** rather than being invented; a parsed time in the past is rejected. Alerts denied by iOS do not prevent saving, and the acknowledgement reports when alerts are unavailable. Completing or deleting a reminder cancels its pending/delivered notification.
+The Shortcut needs cloud settings in its installed native build and network access. Ambiguous or missing times remain **No time set**; a parsed time in the past is rejected. The iPhone upgrade cancels legacy alerts associated with saved Cue reminders without deleting those reminders. No new local notifications are scheduled in the custom iPhone app. The APNs queue stores only open titles/IDs/times and its activity token for a bounded session; it is not account/device reminder sync. Apple keys stay in Worker Secrets. The generated `ios/` project is ignored because it embeds the separate demo access token and local signing; reproduce it from the tracked plugin and Swift sources.
 
 ## Architecture and integrations
 
@@ -151,7 +152,7 @@ The app deliberately stays small:
 - `src/lib/companion.ts` connects the app to the native service and observes shared reminder changes. Native reminder JSON lives in the app's Application Support directory; the Live Activity only receives a small display snapshot.
 - `native/companion/` contains the Swift actor, native cloud configuration lookup, ActivityKit attributes, SwiftUI widget, and App Intents. Native Shortcuts read the installed app's cloud settings without requiring the React Native screen to be open. Both app and Shortcut mutation paths use this service in a custom iPhone build; success receipts name the saved task and time.
 - `plugins/withCueCompanion.cjs` adds the app source membership, embedded widget target, and minimum iOS version during prebuild. `scripts/syncCompanion.cjs` applies it to an existing project without regenerating it.
-- `src/lib/notifications.ts` schedules notifications in Expo Go/Android; the native service uses UserNotifications in custom iPhone builds. Native cloud settings come from the app's Info.plist, with legacy preferences/Keychain storage as a fallback. Installed settings also hydrate JavaScript so text/voice and Shortcuts use the same Worker. Only the separate, extractable Cue demo token is embedded; the OpenAI key stays in Cloudflare.
+- `src/lib/notifications.ts` schedules Expo Go/Android alerts. The native iPhone service cancels legacy Cue alerts, registers ActivityKit tokens/queues and otherwise uses the Live Activity alone. Native settings also hydrate JavaScript so text/voice and Shortcuts use the same Worker. Only the separate, extractable Cue demo token is embedded; OpenAI/APNs private keys stay in Cloudflare.
 
 Libraries and services:
 
@@ -196,15 +197,15 @@ After configuring and deploying the Worker at 04:58 IST on 11 October 2026, fift
 
 A subsequent physical-device audit on 11 October 2026 confirmed three participant-triggered Back Tap saves in Cue's reminder file, corresponding to the live quota counter increasing from seven to ten. Two reminders were complete; the latest incomplete timed reminder had no notification identifier. The agent used a read-only CoreDevice file transfer and did not launch/install Cue. A fresh live API check with the new allowlisted usage receipt reported GPT-6 Luna, provider request/response identifiers and 378 input/30 output tokens. Sixteen backend tests, the real Workers runtime test and lint passed; no app rebuild is needed for this additive backend metadata.
 
-Simulator UI access was not approved for this chat. Rendered Liquid Glass, precise visual deadline transitions, locked-phone input/authentication and notification delivery remain unverified. The participant's installed app successfully saved Shortcut reminders, but the agent did not verify the signed installation process. No phone installation, Metro or ngrok server was started during these checks.
+The latest Live Activity-only update passed 18 Worker scenarios, five scheduler/ES256 tests, two real workerd/D1/alarm tests, three companion tests including 17 Swift selection/date cases and six configuration cases, four path tests, typecheck/lint and unsigned Release iPhone app/widget builds. Worker alarms produced two successive silent updates with one missed task under intercepted test APNs. Real Apple keys/device delivery and rendered dialog/badge behavior remain pending. Simulator UI was not used; no phone install, Metro or ngrok server was started.
 
 ## Known limitations
 
 - The prototype does not yet offer editing, recurring reminders, categories, sync, or sign-in.
-- Local notification behavior depends on the device’s permission and operating-system scheduling policy.
+- Expo Go/Android local alerts depend on device permission and operating-system scheduling policy; the custom iPhone build uses Live Activity only.
 - Adding typed/spoken reminders needs network access and a configured Worker; viewing/completing existing reminders remains local.
 - The private demo uses a shared Cue access token and global quotas. Public distribution needs real user authentication/per-user limits; the shared token is extractable from the client. No reminder cloud sync exists.
-- Live Activity lifetime, refresh timing, and locked-screen interactions remain controlled by iOS. No persistent daemon, automatic expiry renewal, or remote APNs update scheduler is implemented.
+- Live Activity lifetime, push delivery and locked-screen interactions remain controlled by iOS. The APNs scheduler needs Apple credentials, supports 128 open tasks/session and has not been verified on the phone yet. There is no persistent daemon or automatic expiry renewal.
 
 ## Hackathon material
 

@@ -2,7 +2,7 @@ import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 
 import type { Reminder, ReminderSource } from "../types";
 
-export type CompanionStatus = { enabled: boolean; allowed: boolean; active: boolean };
+export type CompanionStatus = { enabled: boolean; allowed: boolean; active: boolean; pushStatus?: string };
 
 type CompanionModule = {
   getReminders(): Promise<string | null>;

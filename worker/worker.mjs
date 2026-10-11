@@ -1,10 +1,13 @@
 // Paste this entire ES module into Cloudflare's Worker editor. No packages needed.
 // Required: CUE_DB (D1 binding), OPENAI_API_KEY and CUE_CLIENT_TOKEN (Secrets).
 // Run schema.sql in the D1 console first. See README.md for deployment steps.
+// Optional automatic Live Activity updates also need CUE_ACTIVITIES and APNs
+// secrets/configuration. See APNS.md; AI remains usable without push setup.
 const MODEL = "gpt-6-luna";
 const LIMITS = {
   parse: { perMinute: 10, perDay: 500 },
   transcribe: { perMinute: 2, perDay: 50 },
+  activity: { perMinute: 60, perDay: 2000 },
 };
 const AUDIO_BYTES = 2 * 1024 * 1024;
 const MAX_TEXT = 2000;
@@ -150,15 +153,16 @@ async function reserveQuota(db, route, timestamp) {
   const day = Math.floor(timestamp / 86_400_000); // UTC calendar day.
   const limits = LIMITS[route];
   try {
-    const result = await db.prepare(RESERVE_QUOTA)
+    const table = route === "activity" ? "cue_activity_quotas" : "cue_quotas";
+    const result = await db.prepare(RESERVE_QUOTA.replace("cue_quotas", table))
       .bind(route, minute, day, limits.perMinute, limits.perDay).run();
     if (!result.success || ![0, 1].includes(result.meta?.changes)) throw new Error("Quota write failed");
     if (result.meta.changes === 1) return;
-    const row = await db.prepare("SELECT day_window, day_count FROM cue_quotas WHERE route = ?1").bind(route).first();
+    const row = await db.prepare(`SELECT day_window, day_count FROM ${table} WHERE route = ?1`).bind(route).first();
     const daily = row?.day_window === day && row.day_count >= limits.perDay;
     const reset = daily ? (day + 1) * 86_400_000 : (minute + 1) * 60_000;
     throw new RequestError(429, daily ? "daily_limit" : "rate_limit",
-      daily ? "Cue’s daily AI limit is reached. Try again after midnight UTC." : "Too many requests. Please wait a moment and try again.",
+      daily ? route === "activity" ? "Cue’s daily Live Activity update limit is reached. Try again after midnight UTC." : "Cue’s daily AI limit is reached. Try again after midnight UTC." : "Too many requests. Please wait a moment and try again.",
       Math.max(1, Math.ceil((reset - timestamp) / 1000)));
   } catch (error) {
     if (error instanceof RequestError) throw error;
@@ -332,7 +336,35 @@ export function createWorker({ fetchImpl = (...args) => fetch(...args), now = Da
           if (!await authorized(request, env.CUE_CLIENT_TOKEN)) throw new RequestError(401, "unauthorized", "Cue’s access token does not match Cloudflare CUE_CLIENT_TOKEN. Copy the app’s token from .env into that Worker secret.");
           try { await env.CUE_DB.prepare("SELECT route FROM cue_quotas LIMIT 1").first(); }
           catch { throw new RequestError(503, "quota_unavailable", "The quota table cannot be read. Run worker/schema.sql in the bound D1 database and check the CUE_DB binding."); }
-          response = json({ ok: true, model: MODEL });
+          response = json({ ok: true, model: MODEL, liveActivity: { configured: !missingPushConfiguration(env).length, missing: missingPushConfiguration(env) } });
+        } else if (request.method === "GET" && path === "/v1/push-transport") {
+          requireConfiguration(env);
+          if (!await authorized(request, env.CUE_CLIENT_TOKEN)) throw new RequestError(401, "unauthorized", "Cue’s cloud access is invalid.");
+          await reserveQuota(env.CUE_DB, "activity", now());
+          // Invalid provider/token on purpose: probe APNs transport without an
+          // Apple key, a real device token, OpenAI or any deliverable notification.
+          const probe = await fetchImpl(`https://api.sandbox.push.apple.com/3/device/${"0".repeat(64)}`, {
+            method: "POST", redirect: "manual", signal: AbortSignal.timeout(10_000),
+            headers: { authorization: "bearer invalid-transport-test", "content-type": "application/json",
+              "apns-topic": "com.remindersplusplus.cue.push-type.liveactivity", "apns-push-type": "liveactivity" },
+            body: JSON.stringify({ aps: { timestamp: Math.floor(now() / 1000), event: "update", "content-state": {} } }),
+          });
+          const body = await readBoundedBody(probe, 1024);
+          let reason;
+          try { reason = JSON.parse(new TextDecoder().decode(body)).reason; } catch { reason = null; }
+          response = json({ reachable: probe.status === 403 && ["InvalidProviderToken", "MissingProviderToken"].includes(reason),
+            status: probe.status, reason: ["InvalidProviderToken", "MissingProviderToken"].includes(reason) ? reason : null });
+        } else if (path === "/v1/live-activity") {
+          if (request.method !== "POST") throw new RequestError(405, "method_not_allowed", "Use POST for this endpoint.");
+          requireConfiguration(env);
+          if (!await authorized(request, env.CUE_CLIENT_TOKEN)) throw new RequestError(401, "unauthorized", "Cue’s cloud access is invalid.");
+          if (request.headers.get("Content-Type")?.split(";")[0].trim() !== "application/json") throw new RequestError(415, "content_type", "Send application/json.");
+          const input = validateActivity(parseJSON(await readBoundedBody(request, 64 * 1024)), now());
+          const missing = missingPushConfiguration(env);
+          if (missing.length) throw new RequestError(503, "push_not_configured", `Automatic Live Activity updates need: ${missing.join(", ")}.`);
+          await reserveQuota(env.CUE_DB, "activity", now());
+          const object = env.CUE_ACTIVITIES.get(env.CUE_ACTIVITIES.idFromName(input.sessionID));
+          response = await object.fetch(new Request("https://cue.internal/sync", { method: "POST", body: JSON.stringify(input) }));
         } else {
           const route = path === "/v1/reminders/parse" ? "parse" : path === "/v1/audio/transcribe" ? "transcribe" : null;
           if (!route) throw new RequestError(404, "not_found", "Endpoint not found.");
@@ -365,6 +397,198 @@ export function createWorker({ fetchImpl = (...args) => fetch(...args), now = Da
       }
     },
   };
+}
+
+function missingPushConfiguration(env) {
+  const missing = [];
+  if (!env.CUE_ACTIVITIES?.get) missing.push("CUE_ACTIVITIES");
+  for (const name of ["APNS_TEAM_ID", "APNS_KEY_ID"]) {
+    if (!/^[A-Z0-9]{10}$/.test(env[name] ?? "")) missing.push(name);
+  }
+  if (!env.APNS_PRIVATE_KEY?.includes("-----BEGIN PRIVATE KEY-----")) missing.push("APNS_PRIVATE_KEY");
+  if (!/^[A-Za-z0-9.-]{1,200}$/.test(env.APNS_BUNDLE_ID ?? "")) missing.push("APNS_BUNDLE_ID");
+  if (!["development", "production"].includes(env.APNS_ENVIRONMENT)) missing.push("APNS_ENVIRONMENT");
+  return missing;
+}
+
+function validateActivity(input, now) {
+  const invalid = () => { throw new RequestError(400, "invalid_activity", "Cue’s Live Activity schedule is invalid. Reopen Cue and try again."); };
+  const id = (value) => typeof value === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(value);
+  if (!input || !/^[a-f0-9-]{36}$/i.test(input.sessionID ?? "")
+    || !/^[a-f0-9]{64}$/i.test(input.ownerSecret ?? "")
+    || !Number.isSafeInteger(input.revision) || input.revision < 1) invalid();
+  const common = { sessionID: input.sessionID, ownerSecret: input.ownerSecret, revision: input.revision };
+  if (input.stop === true) return { ...common, stop: true };
+  if (!/^[a-f0-9]{64,256}$/i.test(input.pushToken ?? "") || input.environment !== "development" && input.environment !== "production"
+    || !Number.isFinite(input.expiresAt) || input.expiresAt <= now || input.expiresAt > now + 8 * 3_600_000
+    || !Array.isArray(input.reminders) || input.reminders.length > 128) invalid();
+  const seen = new Set();
+  const reminders = input.reminders.map((item) => {
+    if (!item || !id(item.id) || seen.has(item.id) || typeof item.title !== "string" || !item.title.trim() || item.title.length > 120
+      || item.dueAt !== null && (!Number.isFinite(item.dueAt) || item.dueAt < 0 || item.dueAt > now + 366 * 86_400_000)
+      || !Number.isFinite(item.createdAt) || item.createdAt < 0 || item.createdAt > now + 60_000) invalid();
+    seen.add(item.id);
+    return { id: item.id, title: item.title.trim(), dueAt: item.dueAt, createdAt: item.createdAt };
+  });
+  for (const name of ["reviewingID", "reviewAnchor"]) if (input[name] != null && !id(input[name])) invalid();
+  return { ...common, pushToken: input.pushToken, environment: input.environment,
+    expiresAt: input.expiresAt, reminders, reviewingID: input.reviewingID ?? null, reviewAnchor: input.reviewAnchor ?? null };
+}
+
+const SWIFT_REFERENCE_MS = 978307200000; // Default Foundation Date Codable epoch: 2001-01-01.
+const DUE_WINDOW_MS = 60_000;
+function earlier(a, b) { return (a.dueAt ?? Infinity) - (b.dueAt ?? Infinity) || a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }
+function currentReminder(reminders, now) {
+  return reminders.filter((item) => item.dueAt !== null && item.dueAt <= now && item.dueAt + DUE_WINDOW_MS > now).sort((a, b) => earlier(b, a))[0]
+    ?? reminders.filter((item) => item.dueAt === null || item.dueAt > now).sort(earlier)[0];
+}
+function missedReminders(reminders, now) {
+  const current = currentReminder(reminders, now);
+  return reminders.filter((item) => item.dueAt !== null && item.dueAt <= now
+    && (item.id !== current?.id || item.dueAt + DUE_WINDOW_MS <= now)).sort(earlier);
+}
+function nextTransition(reminders, now) {
+  const dates = reminders.map((item) => item.dueAt).filter((date) => date !== null && date > now);
+  const due = currentReminder(reminders, now)?.dueAt;
+  if (due !== null && due !== undefined && due + DUE_WINDOW_MS > now) dates.push(due + DUE_WINDOW_MS);
+  return dates.length ? Math.min(...dates) : null;
+}
+function activityDisplay(schedule, now) {
+  const current = currentReminder(schedule.reminders, now);
+  const missed = missedReminders(schedule.reminders, now);
+  const reviewing = schedule.reviewingID !== null && schedule.reviewAnchor === (current?.id ?? null) && missed.length > 0;
+  const selected = reviewing ? missed.find((item) => item.id === schedule.reviewingID) ?? missed[0] : current;
+  const date = selected?.dueAt;
+  return { phase: missed.some((item) => item.id === selected?.id) ? "missed" : date != null && date <= now ? "due" : "ready",
+    title: selected?.title ?? "Nothing waiting", detail: selected && date === null ? "No time set" : "",
+    reminderID: selected?.id ?? null, dueAt: date != null ? (date - SWIFT_REFERENCE_MS) / 1000 : null,
+    missedCount: missed.length, reviewingMissed: reviewing };
+}
+
+export function activityPayload(schedule, now) {
+  const state = activityDisplay(schedule, now);
+  const transition = nextTransition(schedule.reminders, now);
+  const next = transition !== null ? activityDisplay(schedule, transition) : null;
+  Object.assign(state, { nextTitle: next?.title ?? null, nextID: next?.reminderID ?? null, nextDueAt: next?.dueAt ?? null,
+    nextPhase: next?.phase ?? null, nextDetail: next?.detail ?? null, nextMissedCount: next?.missedCount ?? null,
+    nextReviewingMissed: next?.reviewingMissed ?? null, nextTransitionAt: transition !== null ? (transition - SWIFT_REFERENCE_MS) / 1000 : null });
+  const aps = { timestamp: Math.floor(now / 1000), event: "update", "content-state": state };
+  if (transition !== null) aps["stale-date"] = Math.floor(transition / 1000);
+  // No alert, sound or badge payload: this updates the existing card only.
+  return { aps };
+}
+
+function base64url(bytes) {
+  return btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+async function digestSecret(value) {
+  return base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));
+}
+function equalDigest(a, b) {
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index++) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
+  return difference === 0;
+}
+
+export class CueActivityScheduler {
+  constructor(ctx, env) { this.ctx = ctx; this.env = env; }
+
+  async fetch(request) {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      // This namespace is private. Only alarm handlers call this reserved object;
+      // the public API forwards validated UUID sessions to /sync exclusively.
+      if (new URL(request.url).pathname === "/authorization") return json({ token: await this.signAuthorization(Date.now()) });
+      const input = await request.json(); // Only the validated, authenticated Worker can reach this object.
+      const ownerHash = await digestSecret(input.ownerSecret);
+      const existing = await this.ctx.storage.get("schedule");
+      if (existing && !equalDigest(ownerHash, existing.ownerHash)) return json({ error: { code: "activity_owner", message: "This Live Activity belongs to another installation." } }, 403);
+      if (existing && input.revision <= existing.revision) return json({ ok: true, scheduled: !existing.stopped, outdated: true });
+      if (existing?.stopped && !input.stop) return json({ error: { code: "activity_ended", message: "Restart Cue’s companion to begin a new push session." } }, 409);
+      const expiresAt = Math.min(input.expiresAt ?? existing?.expiresAt ?? Date.now() + 8 * 3_600_000, existing?.expiresAt ?? Infinity);
+      if (input.stop) {
+        // Keep a bounded tombstone so an older in-flight sync cannot recreate a stopped schedule.
+        await this.ctx.storage.put("schedule", { ownerHash, revision: input.revision, expiresAt, stopped: true });
+        await this.ctx.storage.setAlarm(expiresAt);
+        return json({ ok: true, scheduled: false });
+      }
+      if (input.environment !== this.env.APNS_ENVIRONMENT) return json({ error: { code: "push_environment", message: "Cue and the Worker need matching APNs environments." } }, 409);
+      const schedule = { ...input, ownerHash, expiresAt, failures: 0, lastFailure: null };
+      delete schedule.ownerSecret;
+      await this.ctx.storage.put("schedule", schedule);
+      await this.ctx.storage.setAlarm(Math.min(nextTransition(schedule.reminders, Date.now()) ?? expiresAt, expiresAt));
+      return json({ ok: true, scheduled: true, lastFailure: existing?.lastFailure ? "The last Apple push update failed. The queue has been rescheduled." : null });
+    });
+  }
+
+  async authorization(now) {
+    if (this.env.CUE_ACTIVITIES) {
+      const shared = this.env.CUE_ACTIVITIES.get(this.env.CUE_ACTIVITIES.idFromName("cue-apns-provider-authorization"));
+      const response = await shared.fetch(new Request("https://cue.internal/authorization"));
+      if (!response.ok) throw new Error("apns_authorization");
+      return (await response.json()).token;
+    }
+    return this.signAuthorization(now); // Offline unit context has no namespace.
+  }
+
+  async signAuthorization(now) {
+    // Persist and share the provider token across alarm evictions and sessions:
+    // regenerating it for every wake can trigger APNs provider-token throttling.
+    const cached = await this.ctx.storage.get("authorization");
+    if (cached && cached.team === this.env.APNS_TEAM_ID && cached.keyID === this.env.APNS_KEY_ID
+      && now >= cached.createdAt && now - cached.createdAt < 50 * 60_000) return cached.token;
+    const keyData = atob(this.env.APNS_PRIVATE_KEY.replace(/-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----|\s/g, ""));
+    const key = await crypto.subtle.importKey("pkcs8", Uint8Array.from(keyData, (character) => character.charCodeAt(0)), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+    const encode = (value) => base64url(new TextEncoder().encode(JSON.stringify(value)));
+    const message = `${encode({ alg: "ES256", kid: this.env.APNS_KEY_ID })}.${encode({ iss: this.env.APNS_TEAM_ID, iat: Math.floor(now / 1000) })}`;
+    const signature = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, new TextEncoder().encode(message));
+    const token = `${message}.${base64url(signature)}`;
+    await this.ctx.storage.put("authorization", { createdAt: now, token, team: this.env.APNS_TEAM_ID, keyID: this.env.APNS_KEY_ID });
+    await this.ctx.storage.setAlarm(now + 50 * 60_000);
+    return token;
+  }
+
+  async alarm() {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const schedule = await this.ctx.storage.get("schedule");
+      const now = Date.now();
+      if (!schedule || schedule.expiresAt <= now) { await this.ctx.storage.deleteAll(); return; }
+      if (schedule.stopped) { await this.ctx.storage.setAlarm(schedule.expiresAt); return; }
+      try {
+        const payload = activityPayload(schedule, now);
+        const serialized = JSON.stringify(payload);
+        if (new TextEncoder().encode(serialized).byteLength > 4096) throw new Error("payload_size");
+        const host = this.env.APNS_ENVIRONMENT === "production" ? "api.push.apple.com" : "api.sandbox.push.apple.com";
+        const response = await fetch(`https://${host}/3/device/${schedule.pushToken}`, {
+          method: "POST", redirect: "manual", signal: AbortSignal.timeout(10_000),
+          headers: { authorization: `bearer ${await this.authorization(now)}`, "content-type": "application/json",
+            "apns-topic": `${this.env.APNS_BUNDLE_ID}.push-type.liveactivity`, "apns-push-type": "liveactivity", "apns-priority": "10",
+            "apns-expiration": String(Math.floor(Math.min(nextTransition(schedule.reminders, now) ?? schedule.expiresAt, schedule.expiresAt) / 1000)),
+            "apns-collapse-id": schedule.sessionID }, body: serialized,
+        });
+        await response.body?.cancel(); // Never retain or log provider response bodies or tokens.
+        if (response.status === 410 || response.status === 400) {
+          // Invalid/ended token: stop, retaining only the revision/owner tombstone.
+          await this.ctx.storage.put("schedule", { ownerHash: schedule.ownerHash, revision: schedule.revision, expiresAt: schedule.expiresAt, stopped: true });
+          await this.ctx.storage.setAlarm(schedule.expiresAt);
+          return;
+        }
+        if (!response.ok) throw new Error("apns_rejected");
+        schedule.failures = 0;
+        schedule.lastFailure = null;
+        await this.ctx.storage.put("schedule", schedule);
+        await this.ctx.storage.setAlarm(Math.min(nextTransition(schedule.reminders, Date.now()) ?? schedule.expiresAt, schedule.expiresAt));
+      } catch {
+        schedule.failures += 1;
+        schedule.lastFailure = "Apple push update could not be delivered.";
+        await this.ctx.storage.put("schedule", schedule);
+        // Bounded retries; after six failures, retry at the next real deadline,
+        // or expire. Never turn a provider outage into an endless tight loop.
+        const retryAt = schedule.failures <= 6 ? Date.now() + 2000 * 2 ** (schedule.failures - 1) : Infinity;
+        await this.ctx.storage.setAlarm(Math.min(retryAt, nextTransition(schedule.reminders, Date.now()) ?? Infinity, schedule.expiresAt));
+      }
+    });
+  }
 }
 
 export default createWorker();

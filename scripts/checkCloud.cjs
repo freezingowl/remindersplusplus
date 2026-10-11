@@ -1,6 +1,6 @@
 const path = require("node:path");
 
-async function checkCloud({ origin, token, parse = false, fetchImpl = fetch }) {
+async function checkCloud({ origin, token, parse = false, pushTransport = false, fetchImpl = fetch }) {
   const url = new URL(origin);
   if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || url.pathname !== "/"
     || !/^[A-Za-z0-9_-]{32,256}$/.test(token ?? "")) throw new Error("Configure Cue’s Worker URL and access token in .env first.");
@@ -23,7 +23,8 @@ async function checkCloud({ origin, token, parse = false, fetchImpl = fetch }) {
   }
   const status = await request("/v1/status");
   if (status?.ok !== true) throw new Error("Worker returned an invalid connection status.");
-  if (!parse) return { connected: true };
+  if (pushTransport) return { connected: true, liveActivity: status.liveActivity ?? null, pushTransport: await request("/v1/push-transport") };
+  if (!parse) return { connected: true, liveActivity: status.liveActivity ?? null };
   const start = Date.now();
   const result = await request("/v1/reminders/parse", {
     method: "POST", headers: { ...headers, "Content-Type": "application/json" },
@@ -40,7 +41,7 @@ async function checkCloud({ origin, token, parse = false, fetchImpl = fetch }) {
 if (require.main === module) {
   const root = path.dirname(require.resolve("../package.json"));
   require("@expo/env").load(root, { silent: true });
-  checkCloud({ origin: process.env.EXPO_PUBLIC_CUE_WORKER_URL?.trim() ?? "", token: process.env.EXPO_PUBLIC_CUE_CLIENT_TOKEN?.trim() ?? "", parse: process.argv.includes("--parse") })
+  checkCloud({ origin: process.env.EXPO_PUBLIC_CUE_WORKER_URL?.trim() ?? "", token: process.env.EXPO_PUBLIC_CUE_CLIENT_TOKEN?.trim() ?? "", parse: process.argv.includes("--parse"), pushTransport: process.argv.includes("--push-transport") })
     .then((result) => console.log(JSON.stringify(result, null, 2)))
     .catch((error) => { console.error(error.message); process.exitCode = 1; });
 }

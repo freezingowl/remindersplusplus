@@ -5,6 +5,14 @@
   "compatibility_date": "2026-10-10",
   "workers_dev": true,
   "keep_vars": true,
+  "vars": {
+    "APNS_BUNDLE_ID": "com.remindersplusplus.cue",
+    "APNS_ENVIRONMENT": "development"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "CUE_ACTIVITIES", "class_name": "CueActivityScheduler" }]
+  },
+  "migrations": [{ "tag": "cue-activity-v1", "new_sqlite_classes": ["CueActivityScheduler"] }],
   "d1_databases": [
     {
       "binding": "CUE_DB",

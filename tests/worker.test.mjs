@@ -54,6 +54,42 @@ function request(body = { text: "Call Mum tomorrow at 8 PM", timeZone: "Asia/Kol
   });
 }
 
+test("Live Activity sync validates and rate limits without consuming AI quota or exposing credentials", async (t) => {
+  const f = fixture(t);
+  let synced = 0;
+  Object.assign(f.env, { APNS_TEAM_ID: "ABCDEFGHIJ", APNS_KEY_ID: "KLMNOPQRST",
+    APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----fake-test-only", APNS_BUNDLE_ID: "com.example.cue", APNS_ENVIRONMENT: "development",
+    CUE_ACTIVITIES: { idFromName: (name) => name, get: () => ({ async fetch() { synced++; return Response.json({ ok: true, scheduled: true }); } }) } });
+  const input = { sessionID: "12345678-1234-1234-1234-123456789abc", ownerSecret: "a".repeat(64), revision: 1,
+    pushToken: "b".repeat(64), environment: "development", expiresAt: START + 3_600_000,
+    reminders: [{ id: "first", title: "First", dueAt: START + 120_000, createdAt: START }] };
+  const sync = (body = input, accessToken = TOKEN) => f.worker.fetch(new Request("https://cue.example/v1/live-activity", {
+    method: "POST", headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" }, body: JSON.stringify(body),
+  }), f.env);
+  assert.equal((await sync(input, "incorrect")).status, 401);
+  assert.equal((await sync({ ...input, reminders: Array(129).fill(input.reminders[0]) })).status, 400);
+  assert.equal((await sync({ ...input, pushToken: "https://untrusted.example" })).status, 400);
+  const results = await Promise.all(Array.from({ length: 61 }, () => sync()));
+  assert.equal(results.filter((result) => result.status === 200).length, 60);
+  assert.equal(results.filter((result) => result.status === 429).length, 1);
+  assert.equal(synced, 60);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.db.row(), undefined);
+  assert.equal(f.db.row("transcribe"), undefined);
+});
+
+test("APNs transport check uses deliberately invalid credentials and never the participant's Apple/OpenAI key", async (t) => {
+  const f = fixture(t, { upstream: async (url, options) => {
+    assert.equal(url, `https://api.sandbox.push.apple.com/3/device/${"0".repeat(64)}`);
+    assert.equal(options.headers.authorization, "bearer invalid-transport-test");
+    assert.equal(options.redirect, "manual");
+    return Response.json({ reason: "InvalidProviderToken", privateDiagnostic: "do not return" }, { status: 403 });
+  } });
+  const result = await f.worker.fetch(new Request("https://cue.example/v1/push-transport", { headers: { Authorization: `Bearer ${TOKEN}` } }), f.env);
+  assert.deepEqual(await result.json(), { reachable: true, status: 403, reason: "InvalidProviderToken" });
+  assert.equal(f.db.row(), undefined);
+});
+
 async function code(response) { return (await response.json()).error?.code; }
 
 test("extracts with Luna, no reasoning, strict output and server time; keeps key on upstream only", async (t) => {
@@ -306,7 +342,11 @@ test("connection diagnostics name missing settings and verify token/schema witho
   assert.deepEqual((await health.json()).missing, ["CUE_DB", "OPENAI_API_KEY", "CUE_CLIENT_TOKEN"]);
   const statusRequest = () => new Request("https://cue.example/v1/status", { headers: { Authorization: `Bearer ${TOKEN}` } });
   const ready = await f.worker.fetch(statusRequest(), f.env);
-  assert.deepEqual(await ready.json(), { ok: true, model: "gpt-6-luna" });
+  const diagnostics = await ready.json();
+  assert.equal(diagnostics.ok, true);
+  assert.equal(diagnostics.model, "gpt-6-luna");
+  assert.equal(diagnostics.liveActivity.configured, false);
+  assert.ok(diagnostics.liveActivity.missing.includes("APNS_PRIVATE_KEY"));
   assert.equal((await f.worker.fetch(new Request("https://cue.example/v1/status"), f.env)).status, 401);
   const badSchema = { prepare() { return { async first() { throw new Error("private schema details"); } }; } };
   assert.equal(await code(await f.worker.fetch(statusRequest(), { ...f.env, CUE_DB: badSchema })), "quota_unavailable");

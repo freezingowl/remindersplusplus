@@ -11,6 +11,14 @@ struct CueActivityAttributes: ActivityAttributes {
         var nextTitle: String?
         var nextID: String?
         var nextDueAt: Date?
+        // Optional fields allow an existing activity snapshot to decode on upgrade.
+        var missedCount: Int?
+        var nextMissedCount: Int?
+        var reviewingMissed: Bool?
+        var nextPhase: String?
+        var nextDetail: String?
+        var nextReviewingMissed: Bool?
+        var nextTransitionAt: Date?
     }
 
     var sessionID: String
