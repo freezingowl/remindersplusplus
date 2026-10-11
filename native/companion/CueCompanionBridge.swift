@@ -58,11 +58,14 @@ class CueCompanion: RCTEventEmitter {
     @objc func ask(_ text: String, source: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) {
             let result = try await CueCompanionService.shared.capture(text, source: source)
-            return ["remindersJSON": result.remindersJSON, "reply": result.reply]
+            return ["remindersJSON": result.remindersJSON, "reply": result.reply, "answerJSON": result.answerJSON as Any? ?? NSNull()]
         }
     }
     @objc func getCalendarStatus(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { await CueCompanionService.shared.calendarStatus() }
+    }
+    @objc func getCalendarAnswer(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        perform(resolve, reject) { await CueCompanionService.shared.calendarAnswer() as Any? ?? NSNull() }
     }
     @objc func setCalendarConnected(_ connected: Bool, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         perform(resolve, reject) { try await CueCompanionService.shared.setCalendarConnected(connected) }

@@ -14,6 +14,7 @@ import {
   Alert,
   AppState,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -24,6 +25,7 @@ import {
 } from "react-native";
 
 import { Composer } from "./src/components/Composer";
+import { CalendarAnswerSheet } from "./src/components/CalendarAnswerSheet";
 import { LiquidSurface } from "./src/components/LiquidSurface";
 import { ReminderCard } from "./src/components/ReminderCard";
 import { SettingsSheet } from "./src/components/SettingsSheet";
@@ -32,6 +34,7 @@ import {
   companionStatus,
   configureCompanionCloud,
   hasCompanion,
+  lastCalendarAnswer,
   observeCompanion,
   nativeCloudConfiguration,
   refreshCompanion,
@@ -39,6 +42,7 @@ import {
   setCompanionEnabled,
   toggleWithCompanion,
 } from "./src/lib/companion";
+import type { CalendarAnswer } from "./src/lib/companion";
 import {
   cancelReminderNotification,
   scheduleReminderNotification,
@@ -81,6 +85,7 @@ export default function App() {
   const [companionPushStatus, setCompanionPushStatus] = useState("");
   const [loadError, setLoadError] = useState("");
   const [toast, setToast] = useState("");
+  const [calendarAnswer, setCalendarAnswer] = useState<CalendarAnswer | null>(null);
   const voiceFinishing = useRef(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -101,6 +106,25 @@ export default function App() {
     setToast(message);
     toastTimer.current = setTimeout(() => setToast(""), message.includes("\n") ? 8000 : 3600);
   }
+
+  useEffect(() => {
+    if (!hasCompanion) return;
+    let mounted = true;
+    async function openAnswer(url: string | null): Promise<void> {
+      if (url?.split(/[?#]/)[0] !== "cue://calendar-answer") return;
+      try {
+        const answer = await lastCalendarAnswer();
+        if (!mounted) return;
+        if (answer) setCalendarAnswer(answer);
+        else Alert.alert("Calendar answer", "Ask your Calendar question again to get a fresh answer.");
+      } catch (error) {
+        if (mounted) Alert.alert("Calendar answer", error instanceof Error ? error.message : "Ask your question again.");
+      }
+    }
+    void Linking.getInitialURL().then(openAnswer).catch(() => {});
+    const subscription = Linking.addEventListener("url", ({ url }) => void openAnswer(url));
+    return () => { mounted = false; subscription.remove(); };
+  }, []);
 
   useEffect(() => {
     async function hydrate(): Promise<void> {
@@ -190,7 +214,8 @@ export default function App() {
         setReminders(saved.reminders);
         setInput("");
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        showToast(saved.reply);
+        if (saved.answer) setCalendarAnswer(saved.answer);
+        else showToast(saved.reply);
       } catch (error) {
         Alert.alert("Couldn’t complete request", error instanceof Error ? error.message : "Please try again.");
       } finally {
@@ -428,6 +453,7 @@ export default function App() {
         />
       </KeyboardAvoidingView>
 
+      <CalendarAnswerSheet answer={calendarAnswer} onClose={() => setCalendarAnswer(null)} />
       <SettingsSheet
         cloudConfigured={cloudConfigured}
         onClose={() => setIsSettingsOpen(false)}

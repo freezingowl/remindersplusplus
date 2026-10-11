@@ -19,6 +19,7 @@ actor CueCompanionService {
     private let calendar = CueCalendarService()
 
     func calendarStatus() -> [String: Any] { calendar.status() }
+    func calendarAnswer() -> String? { calendar.lastAnswer() }
     func setCalendarConnected(_ connected: Bool) async throws -> [String: Any] {
         if connected { try await calendar.connect() } else { calendar.disconnect() }
         if !isCapturing { try await restore() }
@@ -288,7 +289,7 @@ actor CueCompanionService {
         if !isCapturing { try await restore() }
     }
 
-    private func showFeedback(phase: String, title: String, detail: String = "", startIfNeeded: Bool = false) async {
+    private func showFeedback(phase: String, title: String, detail: String = "", answer: CueCalendarAnswer? = nil, startIfNeeded: Bool = false) async {
         guard var state = try? restingState() else { return }
         if phase == "answer", let until = feedbackUntil?.addingTimeInterval(-6), let reminders = try? timeline() {
             // If iOS ends this execution, the stale snapshot can still replace
@@ -306,6 +307,9 @@ actor CueCompanionService {
         state.phase = phase
         state.title = title
         state.detail = detail
+        state.answerDate = answer?.dateLabel
+        state.answerRows = answer?.previewRows
+        state.answerFooter = answer?.previewFooter
         try? await publish(state, startIfNeeded: startIfNeeded)
     }
 
@@ -354,12 +358,13 @@ actor CueCompanionService {
             let feedbackRevision = revision
             let answerUntil = Date().addingTimeInterval(8)
             feedbackUntil = answering ? answerUntil.addingTimeInterval(6) : nil
-            await showFeedback(phase: answering ? "answer" : "saved", title: reply.title, detail: reply.detail)
+            await showFeedback(phase: answering ? "answer" : "saved", title: reply.title, detail: reply.detail, answer: reply.answer)
             // Await the acknowledgement within the user-triggered execution. No background timer.
             let pause = answering ? max(0, answerUntil.timeIntervalSinceNow) : parsed.action == "reminder" ? 1.3 : 3
             try? await Task.sleep(nanoseconds: UInt64(pause * 1_000_000_000))
             if revision == feedbackRevision { try? await restore() }
-            return CueCaptureResult(remindersJSON: try json(load()), reply: reply.text)
+            let answerJSON = try reply.answer.map { String(data: try JSONEncoder().encode($0), encoding: .utf8)! }
+            return CueCaptureResult(remindersJSON: try json(load()), reply: reply.text, answerJSON: answerJSON)
         } catch {
             revision += 1
             let feedbackRevision = revision

@@ -20,7 +20,8 @@ struct CueAssistantPlan: Decodable, Sendable {
 struct CueAssistantReply: Sendable {
     var title: String
     var detail: String
-    var text: String { detail.isEmpty ? title : "\(title)\n\(detail)" }
+    var answer: CueCalendarAnswer? = nil
+    var text: String { answer?.text ?? (detail.isEmpty ? title : "\(title)\n\(detail)") }
 }
 
 // Owned and used exclusively by CueCompanionService's actor. Calendar contents
@@ -28,6 +29,7 @@ struct CueAssistantReply: Sendable {
 final class CueCalendarService {
     private let store = EKEventStore()
     private let enabledKey = "cue.calendar.enabled"
+    private let answerKey = "cue.calendar.answer"
     var connected: Bool {
         UserDefaults.standard.bool(forKey: enabledKey) && EKEventStore.authorizationStatus(for: .event) == .fullAccess
     }
@@ -44,8 +46,24 @@ final class CueCalendarService {
         UserDefaults.standard.set(true, forKey: enabledKey)
     }
 
-    func disconnect() { UserDefaults.standard.set(false, forKey: enabledKey) }
+    func disconnect() {
+        UserDefaults.standard.set(false, forKey: enabledKey)
+        UserDefaults.standard.removeObject(forKey: answerKey)
+    }
     func refresh() { store.reset() }
+
+    func lastAnswer() -> String? {
+        guard connected, let data = UserDefaults.standard.data(forKey: answerKey) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func entry(_ event: EKEvent) -> CueCalendarEntry {
+        .init(title: event.title ?? "Calendar event", start: event.startDate, end: event.endDate,
+            allDay: event.isAllDay, subscribed: event.calendar.isSubscribed || event.calendar.type == .subscription,
+            birthday: event.calendar.type == .birthday,
+            availability: event.availability == .free ? .free : event.availability == .notSupported ? .unsupported : .busy,
+            declined: (event.attendees ?? []).contains { $0.isCurrentUser && $0.participantStatus == .declined })
+    }
 
     private func requireAccess() throws {
         guard connected else {
@@ -72,7 +90,7 @@ final class CueCalendarService {
         // Include events spanning midnight, then discard events that have ended.
         let start = Calendar.current.startOfDay(for: now)
         let end = Calendar.current.date(byAdding: .day, value: 30, to: start)!
-        return try events(start: start, end: end).filter { $0.endDate > now }.prefix(128).map { event in
+        return try events(start: start, end: end).filter { $0.endDate > now && !entry($0).informational && !entry($0).declined }.prefix(128).map { event in
             let key = "\(event.eventIdentifier ?? event.calendarItemIdentifier)|\(event.startDate.timeIntervalSince1970)"
             let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
             return CueReminder(id: "cal_\(digest)", title: String((event.title ?? "Calendar event").prefix(120)),
@@ -85,29 +103,13 @@ final class CueCalendarService {
         guard let start = CueDates.parse(plan.rangeStart), let end = CueDates.parse(plan.rangeEnd) else {
             throw CueCompanionError.message("Include a clear date for your Calendar question.")
         }
-        let matches = try events(start: start, end: end)
-        let header = "Calendar · \(dayLabel(start))"
-        if plan.queryKind == "availability" {
-            let busy = matches.filter { event in
-                event.availability != .free && !(event.attendees ?? []).contains { $0.isCurrentUser && $0.participantStatus == .declined }
-            }.map { CueTimeRange(start: $0.startDate, end: $0.endDate) }
-            let free = CueAvailability.free(in: .init(start: start, end: end), busy: busy)
-            let multipleDays = !Calendar.current.isDate(start, inSameDayAs: end.addingTimeInterval(-1))
-            func label(_ date: Date) -> String { multipleDays ? shortLabel(date) : timeLabel(date) }
-            let window = "\(label(start))–\(label(end))"
-            let detail = free.isEmpty ? "Busy throughout \(window)." : "Free: " + free.prefix(4).map {
-                "\(label($0.start))–\(label($0.end))"
-            }.joined(separator: "; ") + (free.count > 4 ? "; +\(free.count - 4) more gaps." : ".")
-            return .init(title: header, detail: String((detail + " Based on Calendar, \(window).").prefix(400)))
-        }
-        let filtered = plan.searchTitle.isEmpty ? matches : matches.filter {
-            ($0.title ?? "").range(of: plan.searchTitle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
-        }
-        let detail = filtered.isEmpty ? "No \(plan.searchTitle.isEmpty ? "events" : "matching events") in this date range." :
-            filtered.prefix(3).map { event in
-                "\(event.isAllDay ? dayLabel(event.startDate) + " all day" : shortLabel(event.startDate)): \(String((event.title ?? "Calendar event").prefix(70)))"
-            }.joined(separator: " · ") + (filtered.count > 3 ? " · +\(filtered.count - 3) more events." : "")
-        return .init(title: header, detail: String(detail.prefix(400)))
+        let matches = try events(start: start, end: end).map(entry)
+        let answer = CueCalendarAnswers.make(entries: matches, window: .init(start: start, end: end),
+            availability: plan.queryKind == "availability", searchTitle: plan.searchTitle)
+        // Full results stay local; only three short rows enter ActivityKit's
+        // size-limited snapshot. Tapping the card opens this saved answer.
+        UserDefaults.standard.set(try JSONEncoder().encode(answer), forKey: answerKey)
+        return .init(title: answer.title, detail: "", answer: answer)
     }
 
     func save(_ plan: CueAssistantPlan) throws -> CueAssistantReply {
@@ -173,11 +175,4 @@ final class CueCalendarService {
             detail: "\(event.title ?? plan.title) · \(CueDates.label(start))\(creating && plan.endAt.isEmpty && !plan.allDay ? " · 1 hour" : "")")
     }
 
-    private func dayLabel(_ date: Date) -> String {
-        let formatter = DateFormatter(); formatter.dateFormat = "EEE, d MMM"; return formatter.string(from: date)
-    }
-    private func timeLabel(_ date: Date) -> String {
-        let formatter = DateFormatter(); formatter.dateStyle = .none; formatter.timeStyle = .short; return formatter.string(from: date)
-    }
-    private func shortLabel(_ date: Date) -> String { "\(dayLabel(date)) \(timeLabel(date))" }
 }

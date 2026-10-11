@@ -111,6 +111,7 @@ struct CueCloudSettings: Sendable {
 struct CueCaptureResult: Sendable {
     let remindersJSON: String
     let reply: String
+    var answerJSON: String? = nil
 }
 
 struct CueTimeRange: Equatable, Sendable {

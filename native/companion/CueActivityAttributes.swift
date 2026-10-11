@@ -19,6 +19,9 @@ struct CueActivityAttributes: ActivityAttributes {
         var nextDetail: String?
         var nextReviewingMissed: Bool?
         var nextTransitionAt: Date?
+        var answerDate: String?
+        var answerRows: [CueAnswerRow]?
+        var answerFooter: String?
     }
 
     var sessionID: String

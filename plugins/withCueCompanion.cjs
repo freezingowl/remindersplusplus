@@ -3,8 +3,8 @@ const path = require("node:path");
 const { withDangerousMod, withEntitlementsPlist, withInfoPlist, withPodfileProperties, withXcodeProject } = require("expo/config-plugins");
 
 const folder = "CueCompanion";
-const appFiles = ["CueReminderModel.swift", "CueCalendarService.swift", "CueActivityAttributes.swift", "CueCompanionService.swift", "CueCompanionBridge.swift", "CueCompanionBridge.m", "CueIntents.swift"];
-const widgetFiles = ["CueReminderModel.swift", "CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"];
+const appFiles = ["CueReminderModel.swift", "CueCalendarAnswer.swift", "CueCalendarService.swift", "CueActivityAttributes.swift", "CueCompanionService.swift", "CueCompanionBridge.swift", "CueCompanionBridge.m", "CueIntents.swift"];
+const widgetFiles = ["CueReminderModel.swift", "CueCalendarAnswer.swift", "CueCalendarAnswerView.swift", "CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift"];
 const unquote = (value) => String(value ?? "").replace(/^"|"$/g, "");
 
 function configurations(project, target) {

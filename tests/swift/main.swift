@@ -71,3 +71,50 @@ expect(CueAvailability.free(in: range(0, 0), busy: []).isEmpty, "Empty range can
 let legacy = try! JSONDecoder().decode(CueReminder.self, from: Data("{\"id\":\"old\",\"title\":\"Old task\",\"note\":\"\",\"completed\":false,\"createdAt\":\"2026-10-11T00:00:00Z\",\"source\":\"text\"}".utf8))
 expect(legacy.endAt == nil, "Existing reminders decode without a Calendar end field")
 print("12 Calendar and availability scenarios passed")
+
+var testCalendar = Calendar(identifier: .gregorian)
+testCalendar.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+let testLocale = Locale(identifier: "en_US")
+func date(_ hour: Int) -> Date { CueDates.parse(String(format: "2026-10-12T%02d:00:00+05:30", hour))! }
+func entry(_ title: String, start: Int, end: Int, allDay: Bool = false, subscribed: Bool = false,
+           birthday: Bool = false, availability: CueEventAvailability = .unsupported, declined: Bool = false) -> CueCalendarEntry {
+    .init(title: title, start: date(start), end: end == 24 ? date(0).addingTimeInterval(86400) : date(end),
+          allDay: allDay, subscribed: subscribed, birthday: birthday, availability: availability, declined: declined)
+}
+let hackathon = entry("Hackathon", start: 9, end: 10)
+let holiday = entry("Columbus Day", start: 0, end: 24, allDay: true, subscribed: true)
+let secondHoliday = entry("Indigenous Peoples' Day", start: 0, end: 24, allDay: true, subscribed: true)
+let workday = CueTimeRange(start: date(9), end: date(18))
+func answer(_ entries: [CueCalendarEntry], availability: Bool = true, window: CueTimeRange = workday) -> CueCalendarAnswer {
+    CueCalendarAnswers.make(entries: entries, window: window, availability: availability, now: now, calendar: testCalendar, locale: testLocale)
+}
+expect(!holiday.blocksTime && holiday.informational, "Subscribed all-day holidays with unsupported availability do not block time")
+expect(hackathon.blocksTime, "Unsupported availability on a personal event remains busy")
+let fixed = answer([holiday, secondHoliday, hackathon])
+expect(fixed.title.replacingOccurrences(of: "\u{202F}", with: " ") == "Free after 10 AM", "The reported holiday + 9–10 AM Hackathon case gives a natural answer: \(fixed.title)")
+expect(fixed.rows.count == 2 && fixed.rows[0].kind == "free" && fixed.rows[1].title == "Hackathon", "Free time and actual commitment are separate readable rows")
+expect(fixed.footer.contains("2 dates aren't busy") && fixed.footer.contains("Checked"), "Disclose the informational exclusion and queried window")
+expect(answer([entry("Away", start: 0, end: 24, allDay: true)]).title == "No free time", "Personal all-day commitments still block the whole day")
+expect(entry("Conference", start: 0, end: 24, allDay: true, subscribed: true, availability: .busy).blocksTime, "Explicitly busy subscribed all-day events still block time")
+expect(entry("Subscribed class", start: 9, end: 10, subscribed: true).blocksTime, "Timed subscribed events still block time")
+expect(!entry("Birthday", start: 0, end: 24, allDay: true, birthday: true).blocksTime, "Birthday dates are informational")
+expect(!entry("Free event", start: 9, end: 10, availability: .free).blocksTime, "Honor an explicitly free event")
+expect(answer([entry("Declined", start: 9, end: 18, declined: true)]).rows.count == 1, "Declined events do not appear as busy commitments")
+expect(answer([]).title == "You're free tomorrow", "An empty Calendar answers the requested day directly")
+let agenda = answer([holiday, secondHoliday, hackathon], availability: false, window: .init(start: date(0), end: date(0).addingTimeInterval(86400)))
+expect(agenda.rows.map(\.title).first == "Hackathon" && agenda.rows.count == 3 && agenda.rows[1].time == "All day", "Agenda prioritizes timed appointments while retaining holiday rows")
+let crowded = answer((0..<8).map { entry("Event \($0)", start: 9 + $0, end: 10 + $0) }, availability: false)
+expect(crowded.previewRows.count == 3 && crowded.rows.count == 8 && crowded.previewFooter.contains("+5 more"), "Bound the preview without dropping the full agenda")
+expect((try! JSONDecoder().decode(CueCalendarAnswer.self, from: JSONEncoder().encode(crowded))) == crowded, "The full local answer round-trips for a card tap")
+expect(answer([hackathon, entry("Meeting", start: 14, end: 15)]).rows.filter { $0.kind == "free" }.count == 2, "Multiple free intervals remain separate rows")
+expect(answer([], window: .init(start: date(0), end: date(0).addingTimeInterval(86400))).rows[0].time == "All day", "A full-day window does not display a misleading midnight-to-midnight time")
+let multiDay = answer([], window: .init(start: date(9), end: date(18).addingTimeInterval(86400)))
+expect(multiDay.rows[0].time.contains("Oct") && multiDay.dateLabel.contains("13"), "A multi-day answer labels dates as well as times")
+let manyGaps = answer([hackathon, entry("Meeting", start: 12, end: 13), entry("Call", start: 15, end: 16)])
+expect(manyGaps.previewFooter.contains("Checked") && manyGaps.previewFooter.contains("more"), "An overflow preview still discloses the availability window")
+let longAgenda = answer((0..<5).map { entry(String(repeating: "😀", count: 120), start: 9 + $0, end: 10 + $0) }, availability: false)
+let snapshot: [String: Any] = ["phase": "answer", "title": longAgenda.title, "detail": "", "answerDate": longAgenda.dateLabel,
+    "answerRows": longAgenda.previewRows.map { ["time": $0.time, "title": $0.title, "kind": $0.kind] },
+    "answerFooter": longAgenda.previewFooter, "nextTitle": String(repeating: "😀", count: 120), "nextDetail": "12 Oct 2026 at 9 AM", "nextID": String(repeating: "a", count: 68), "nextPhase": "event", "nextTransitionAt": 813133800]
+expect((try! JSONSerialization.data(withJSONObject: snapshot)).count < 4096, "Worst-case Unicode titles fit the bounded ActivityKit preview payload")
+print("20 Calendar answer scenarios passed")

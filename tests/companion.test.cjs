@@ -46,8 +46,8 @@ test("native plugin survives repeated prebuilds and preserves app signing/versio
     assert.match(settings.SWIFT_ACTIVE_COMPILATION_CONDITIONS, /CUE_WIDGET_EXTENSION/);
   }
   const sources = (target) => project.pbxSourcesBuildPhaseObj(target).files.map(({ value }) => objects.PBXBuildFile[value].fileRef_comment).sort();
-  assert.deepEqual(sources("APP"), ["CueActivityAttributes.swift", "CueCalendarService.swift", "CueCompanionBridge.m", "CueCompanionBridge.swift", "CueCompanionService.swift", "CueIntents.swift", "CueReminderModel.swift"]);
-  assert.deepEqual(sources(widget[0]), ["CueActivityAttributes.swift", "CueIntents.swift", "CueLiveActivity.swift", "CueReminderModel.swift"]);
+  assert.deepEqual(sources("APP"), ["CueActivityAttributes.swift", "CueCalendarAnswer.swift", "CueCalendarService.swift", "CueCompanionBridge.m", "CueCompanionBridge.swift", "CueCompanionService.swift", "CueIntents.swift", "CueReminderModel.swift"]);
+  assert.deepEqual(sources(widget[0]), ["CueActivityAttributes.swift", "CueCalendarAnswer.swift", "CueCalendarAnswerView.swift", "CueIntents.swift", "CueLiveActivity.swift", "CueReminderModel.swift"]);
   assert.equal(objects.PBXNativeTarget.APP.dependencies.length, 1);
   const embedding = project.pbxCopyfilesBuildPhaseObj("APP");
   assert.equal(embedding.dstSubfolderSpec, 13);
@@ -58,7 +58,7 @@ test("native selection prioritizes the newest due task and retains missed remind
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "cue companion tests "));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const executable = path.join(temp, "selection-tests");
-  const compile = spawnSync("xcrun", ["swiftc", "-module-cache-path", path.join(temp, "modules"), "native/companion/CueReminderModel.swift", "tests/swift/main.swift", "-o", executable], { encoding: "utf8", timeout: 50_000 });
+  const compile = spawnSync("xcrun", ["swiftc", "-module-cache-path", path.join(temp, "modules"), "native/companion/CueReminderModel.swift", "native/companion/CueCalendarAnswer.swift", "tests/swift/main.swift", "-o", executable], { encoding: "utf8", timeout: 50_000 });
   assert.ifError(compile.error);
   assert.equal(compile.status, 0, compile.stderr);
   const run = spawnSync(executable, [], { encoding: "utf8", timeout: 5_000 });
@@ -66,6 +66,7 @@ test("native selection prioritizes the newest due task and retains missed remind
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /17 selection scenarios passed/);
   assert.match(run.stdout, /12 Calendar and availability scenarios passed/);
+  assert.match(run.stdout, /20 Calendar answer scenarios passed/);
 });
 
 test("native build embeds only validated Cue settings and clears obsolete values", () => {
