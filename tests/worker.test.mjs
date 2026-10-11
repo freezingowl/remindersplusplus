@@ -96,6 +96,24 @@ test("relative durations use the submission clock across timezone and date bound
   }
 });
 
+test("successful capture returns actual OpenAI usage metadata without raw headers or credentials", async (t) => {
+  const output = { ...completion(), id: "resp_test", model: "gpt-6-luna", usage: {
+    input_tokens: 500, input_tokens_details: { cached_tokens: 100 }, output_tokens: 50, total_tokens: 550,
+  }, privateDiagnostic: "must-not-relay" };
+  const f = fixture(t, { upstream: async () => Response.json(output, { headers: {
+    "x-request-id": "req_test", "openai-organization": "org-test", "private-header": "must-not-relay",
+  } }) });
+  const response = await f.worker.fetch(request(), f.env);
+  const payload = await response.json();
+  assert.deepEqual(payload.ai, { provider: "openai", model: "gpt-6-luna", requestId: "req_test", responseId: "resp_test",
+    organizationId: "org-test", inputTokens: 500, cachedInputTokens: 100, outputTokens: 50, totalTokens: 550 });
+  assert.doesNotMatch(JSON.stringify(payload), /fake-upstream-key|must-not-relay/);
+  const absent = fixture(t);
+  const receipt = (await (await absent.worker.fetch(request(), absent.env)).json()).ai;
+  assert.equal(receipt.inputTokens, null); // Missing usage is unavailable, never fabricated zero.
+  assert.equal(receipt.requestId, null);
+});
+
 test("relative time rejects conflicting, malformed, excessive and already-expired durations", async (t) => {
   for (const delay of [undefined, {}, { amount: "2", unit: "minutes" }, { amount: 0, unit: "minutes" },
     { amount: -1, unit: "hours" }, { amount: 400 * 24, unit: "hours" }, { amount: 2, unit: "days" },
@@ -307,7 +325,8 @@ test("sushi preflight makes no paid request when readiness fails and validates t
   const result = await checkCloud({ origin: "https://cue.example", token: TOKEN, parse: true, fetchImpl: async (url, options) => {
     if (url.endsWith("/v1/status")) return Response.json({ ok: true });
     assert.equal(JSON.parse(options.body).text, "Remind me to make sushi in 2 minutes");
-    return Response.json({ reminder: { title: "Make sushi", dueAt: new Date(Date.now() + 120_000).toISOString() } });
+    return Response.json({ reminder: { title: "Make sushi", dueAt: new Date(Date.now() + 120_000).toISOString() }, ai: { inputTokens: 500, outputTokens: 50 } });
   } });
   assert.equal(result.title, "Make sushi");
+  assert.deepEqual(result.ai, { inputTokens: 500, outputTokens: 50 });
 });

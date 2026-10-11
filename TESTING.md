@@ -4,6 +4,8 @@ The screenshot's **“Cloud AI isn’t configured”** error occurred in the nat
 
 **This local checkout's server setup is complete as of 11 October 2026, 04:58 IST.** The deployed Worker has the D1 binding/schema and matching Cue token; authenticated readiness passed. The exact sushi sentence returned **Make sushi** with a deadline two minutes ahead in **2.524 seconds**. Written-out duration, explicit local time and ambiguous input also passed. Start at **step 3** to install and test on your phone. Steps 1–2 remain here for a fresh deployment or troubleshooting. Backend checks do not create reminders on the phone.
 
+A later read-only audit of the participant's installed iPhone app confirmed all three Back Tap reminders were saved with times. The latest incomplete reminder had no notification scheduled: enable **Settings → Notifications → Cue → Allow Notifications** and create a fresh future reminder. Completing a task removes its notification identifier, so that field cannot prove whether an already-completed task originally had an alert. You do not need to rebuild the working app for the new cloud usage receipt below.
+
 ## 1. Configure a fresh Worker if needed
 
 - Replace the deployed JavaScript with the current [worker/worker.mjs](worker/worker.mjs) and deploy it. This includes runtime-compatible upstream requests and server-calculated elapsed deadlines; the AI model and quota limits remain the same.
@@ -28,7 +30,7 @@ Then run the user's exact sentence once through OpenAI:
 npm run cloud:check -- --parse
 ```
 
-This sends **“Remind me to make sushi in 2 minutes”** once, only after the readiness check passes. Expect a title such as **Make sushi** and `dueAt` about two minutes ahead. It reports latency. This incurs one text API request but creates no reminder/notification on the phone. An error here means the phone cannot successfully create this reminder either; address that error first.
+This sends **“Remind me to make sushi in 2 minutes”** once, only after the readiness check passes. Expect a title such as **Make sushi** and `dueAt` about two minutes ahead. It reports latency and an `ai` receipt with provider-reported model, request/response IDs, organization identifier and input/output token counts. Missing provider metadata is `null`, not invented. This incurs one text API request but creates no reminder/notification on the phone. An error here means the phone cannot successfully create this reminder either; address that error first. The [OpenAI Usage dashboard](https://platform.openai.com/usage) reports billing separately; check the organization/project owning the Worker key and a date range covering the actual UTC timestamps. Very small Luna requests can cost far below one cent.
 
 ## 3. Install a standalone Cue app
 
@@ -94,4 +96,4 @@ Do not complete the new reminder before its deadline if you want to test the ale
 
 Each activity can remain active for up to eight hours, and can be dismissed. Updating it does not reset that lifetime; later enabled captures can start a new session. Reminders/notifications persist independently. This is not an always-running process.
 
-Offline tests use mocked OpenAI responses, including one test in the real Workers runtime. Four live text AI cases have also passed against the deployed Worker. Native compilation was unsigned; physical-device capture, notifications and Back Tap remain to be verified with the steps above. Voice transcription has not been tested against the live API.
+Offline tests use mocked OpenAI responses, including one test in the real Workers runtime. Live text AI and three participant-triggered Back Tap saves are verified. The agent's native compilation was unsigned; the participant installed the app. Rendered activity transitions, locked-phone behavior and actual notification delivery still need observation. Voice transcription has not been tested against the live API.

@@ -193,12 +193,31 @@ async function openAI(env, path, body, fetchImpl, timeoutMs) {
       throw new RequestError(502, "ai_unavailable", "AI is unavailable. Please try again.");
     }
     // Timeout covers reading the response too. Never relay upstream error bodies.
-    return parseJSON(await readBoundedBody(response, 32 * 1024));
+    return {
+      payload: parseJSON(await readBoundedBody(response, 32 * 1024)),
+      requestId: response.headers.get("x-request-id"),
+      organizationId: response.headers.get("openai-organization"),
+    };
   } catch (error) {
     if (controller.signal.aborted) throw new RequestError(504, "ai_timeout", "AI took too long. Please try again.");
     if (error instanceof RequestError && [502, 503, 400].includes(error.status) && error.code !== "invalid_json") throw error;
     throw new RequestError(502, "ai_unavailable", "AI returned an unreadable response. Please try again.");
   } finally { clearTimeout(timer); }
+}
+
+function aiReceipt(result, upstream) {
+  const identifier = (value) => typeof value === "string" && /^[A-Za-z0-9_.-]{1,200}$/.test(value) ? value : null;
+  const tokens = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  // Only allowlisted provider metadata is returned to the authenticated caller.
+  // This is a per-request usage receipt, not a bill or a retained request log.
+  return {
+    provider: "openai", model: identifier(result.model),
+    requestId: identifier(upstream.requestId), responseId: identifier(result.id),
+    organizationId: identifier(upstream.organizationId),
+    inputTokens: tokens(result.usage?.input_tokens),
+    cachedInputTokens: tokens(result.usage?.input_tokens_details?.cached_tokens),
+    outputTokens: tokens(result.usage?.output_tokens), totalTokens: tokens(result.usage?.total_tokens),
+  };
 }
 
 function reminderRequest(input, timestamp) {
@@ -323,9 +342,10 @@ export function createWorker({ fetchImpl = (...args) => fetch(...args), now = Da
           const input = route === "parse" ? await parseInput(request) : await audioInput(request);
           const timestamp = now();
           await reserveQuota(env.CUE_DB, route, timestamp);
-          const result = await openAI(env, route === "parse" ? "responses" : "audio/transcriptions",
+          const upstream = await openAI(env, route === "parse" ? "responses" : "audio/transcriptions",
             route === "parse" ? reminderRequest(input, timestamp) : input, fetchImpl, timeoutMs);
-          if (route === "parse") response = json({ reminder: extractReminder(result, timestamp, now()) });
+          const result = upstream.payload;
+          if (route === "parse") response = json({ reminder: extractReminder(result, timestamp, now()), ai: aiReceipt(result, upstream) });
           else {
             if (typeof result?.text !== "string" || !result.text.trim() || result.text.length > MAX_TEXT) {
               throw new RequestError(422, "empty_transcript", "No short reminder was heard. Try recording again.");

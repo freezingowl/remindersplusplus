@@ -34,7 +34,7 @@ async function checkCloud({ origin, token, parse = false, fetchImpl = fetch }) {
   if (typeof reminder?.title !== "string" || !Number.isFinite(seconds) || seconds < 90 || seconds > 150) {
     throw new Error("The sushi test did not return a time about two minutes ahead. Check the model output before testing the phone.");
   }
-  return { connected: true, title: reminder.title, dueAt: reminder.dueAt, elapsedMs: Date.now() - start };
+  return { connected: true, title: reminder.title, dueAt: reminder.dueAt, elapsedMs: Date.now() - start, ai: result.ai ?? null };
 }
 
 if (require.main === module) {
