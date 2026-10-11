@@ -37,7 +37,7 @@ Limits: one action/request, query windows up to 31 days/500 events, explicit eve
 
 Deploy the updated Worker, then sync/build as described below. `npm run cloud:check:assistant` makes six synthetic paid AI calls to verify routing/times without touching a phone or Calendar. Physical permission, EventKit writes and the rendered eight-second answer still require device validation; an unsigned build does not establish those results.
 
-Branch status (11 October 2026, 06:54 IST): automated checks and the unsigned Release app/widget build pass; the Worker is packaged locally. Live deployment was blocked by automatic approval review and needs explicit user approval. Readiness confirms the existing deployed backend is healthy but does not yet expose the assistant, and the three Apple push secrets are still missing. Do not install this branch expecting Calendar requests to work until its Worker is deployed. The new six-case live AI check has not been run.
+Branch status (11 October 2026, 07:09 IST): the participant approved deployment, and the updated Worker is live with `assistant:true`. All six synthetic AI routing checks passed, plus the reported “What's for tomorrow?” question correctly selected the 12 October local Calendar day in Asia/Kolkata. These checks verify request interpretation, not the phone's actual events or rendered answer. Automated checks and the unsigned Release app/widget build pass; the three Apple push secrets are still missing. Actual EventKit writes and the brief answer/restoration still need device testing.
 
 ## Run the app
 

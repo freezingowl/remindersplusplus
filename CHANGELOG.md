@@ -4,6 +4,13 @@ Record each meaningful project change during the event, newest first. Update thi
 
 ## Event build log
 
+## 2026-10-11T07:09:33+05:30 — Deploy and verify the Calendar assistant after approval
+
+- Diagnosis: The participant's Shortcut screenshot reported “Endpoint not found.” A read-only authenticated check confirmed the existing backend had `assistant:false`, while the new native request uses `/v1/assistant`. The resting holiday card was not a successful question response; no conclusion was drawn about the participant's Hackathon event.
+- Released: After explicit participant approval, deployed the existing `floral-frost-2cd1` Cloudflare Worker using the tracked configuration. Version `89671ea6-4e06-4a8d-863c-d668e3412a36` now reports `assistant:true`. Preserved secrets, database bindings and quota data; no schema reset or phone mutation was performed. Updated README, TESTING, SUBMISSION and the AI usage record to remove the stale deployment blocker.
+- Validation: Reran all 22 Worker and seven scheduler tests successfully. Authenticated live readiness passed. All six synthetic AI routing cases passed in 1.701–3.203 seconds. One additional exact “What's for tomorrow?” request returned `query_calendar`/`agenda`, no title filter, and `2026-10-12T00:00:00+05:30` through `2026-10-13T00:00:00+05:30` in 3.997 seconds using GPT-6 Luna. These seven paid backend checks accessed no actual Calendar and created no phone reminder/event.
+- Limitations: Physical Calendar contents, event writes, Back Tap answer rendering and eight-second restoration still require participant testing. APNS_TEAM_ID, APNS_KEY_ID and APNS_PRIVATE_KEY remain missing, so unattended push transitions are not enabled. No app install/launch or persistent development server was started.
+
 ## 2026-10-11T06:54:34+05:30 — Add the Calendar assistant on a feature branch
 
 - Changed: Created `feat/calendar-assistant` from the clean `main` checkpoint. Added an authenticated, strict structured `/v1/assistant` route for reminders, Calendar creation/moving, agenda/availability queries and short answers, sharing the proven atomic AI quota and server duration arithmetic. Preserved the legacy reminder endpoint and existing Shortcut identifier. Added native EventKit full-access opt-in, device-local Calendar queries/free-interval arithmetic, default-calendar writes, duplicate prevention and unambiguous single-occurrence moves; queries never create reminder cards. Added Ask Cue for text/dictation/Back Tap, an in-app reply, brief Activity answers and next Calendar event selection. Active Calendar events last until their end; missed/completion semantics remain for Cue tasks alone.
