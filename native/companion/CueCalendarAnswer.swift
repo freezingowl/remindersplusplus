@@ -11,16 +11,24 @@ struct CueCalendarAnswer: Codable, Hashable, Sendable {
     var dateLabel: String
     var rows: [CueAnswerRow]
     var footer: String
+    var summary: String? = nil
+    var summaryDetail: String? = nil
 
-    var previewRows: [CueAnswerRow] { Array(rows.prefix(3)) }
-    var previewFooter: String {
-        guard rows.count > 3 else { return footer }
-        let scope = footer.hasPrefix("Checked ") ? String(footer.split(separator: "·")[0]).trimmingCharacters(in: .whitespaces) + " · " : ""
-        return scope + "+\(rows.count - 3) more · Tap to view"
-    }
+    var headline: String { summary ?? title }
+    var conciseDetail: String { summaryDetail ?? "" }
+
     var text: String {
         ([title + " · " + dateLabel] + rows.map { "\($0.time) — \($0.title)" } + [footer])
             .filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+}
+
+enum CueAnswerText {
+    static func primary(title: String, detail: String) -> String {
+        // Existing general-answer snapshots used “Cue” as a placeholder title.
+        // Promote their real reply too, without repeating it underneath.
+        let text = title == "Cue" && !detail.isEmpty ? detail : title
+        return text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 }
 
@@ -88,8 +96,23 @@ enum CueCalendarAnswers {
                     title: String($0.title.prefix(120)), kind: "busy") }
             let informational = visible.filter(\.informational).count
             let note = informational > 0 ? " · \(informational) dates aren't busy" : ""
+            let daySuffix = day == "Your schedule" ? "" : " \(day.lowercased())"
+            let summary: String
+            if free.isEmpty { summary = "No free time\(daySuffix)." }
+            else if busy.isEmpty {
+                let hours = interval(window.start, window.end)
+                summary = "You're free \(hours == "All day" ? "all day" : hours)\(daySuffix)."
+            }
+            else if sameDay && free.count == 1 && (free[0].start == window.start || free[0].end == window.end) {
+                summary = title + daySuffix + "."
+            }
+            else {
+                let slots = free.prefix(2).map { interval($0.start, $0.end) }.joined(separator: " and ")
+                summary = "Free \(slots)\(daySuffix)." + (free.count > 2 ? " +\(free.count - 2) more slots." : "")
+            }
             return .init(title: title, dateLabel: dateLabel, rows: rows,
-                         footer: "Checked \(interval(window.start, window.end))\(note)")
+                         footer: "Checked \(interval(window.start, window.end))\(note)",
+                         summary: summary, summaryDetail: "Checked \(interval(window.start, window.end))")
         }
         let matched = searchTitle.isEmpty ? visible : visible.filter {
             $0.title.range(of: searchTitle, options: [.caseInsensitive, .diacriticInsensitive]) != nil
@@ -105,7 +128,16 @@ enum CueCalendarAnswers {
                 : interval(entry.start, entry.end), title: String(entry.title.prefix(120)),
                 kind: entry.informational ? "info" : "event")
         }
+        let appointments = rows.filter { $0.kind != "info" }
+        let mainRows = appointments.isEmpty ? rows : appointments
+        let daySuffix = day == "Your schedule" ? "" : " \(day.lowercased())"
+        let summary: String
+        if let first = mainRows.first {
+            summary = "\(String(first.title.prefix(70))), \(first.time)\(daySuffix)."
+                + (mainRows.count > 1 ? " +\(mainRows.count - 1) more \(appointments.isEmpty ? "date" : "event")\(mainRows.count > 2 ? "s" : "")." : "")
+        } else { summary = searchTitle.isEmpty ? "Nothing scheduled\(daySuffix)." : "No matching events\(daySuffix)." }
         return .init(title: day, dateLabel: dateLabel, rows: rows,
-            footer: rows.isEmpty ? (searchTitle.isEmpty ? "No events in this date range" : "No matching events") : "\(rows.count) \(rows.count == 1 ? "event" : "events") · Tap for full agenda")
+            footer: rows.isEmpty ? (searchTitle.isEmpty ? "No events in this date range" : "No matching events") : "\(rows.count) \(rows.count == 1 ? "event" : "events") · Tap for full agenda",
+            summary: summary)
     }
 }

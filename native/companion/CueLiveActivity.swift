@@ -44,21 +44,22 @@ private struct CueCard: View {
     private var missedCount: Int { promoted ? context.state.nextMissedCount ?? 0 : context.state.missedCount ?? 0 }
     private var reviewingMissed: Bool { promoted ? context.state.nextReviewingMissed == true : context.state.reviewingMissed == true }
     private var detail: String { promoted ? context.state.nextDetail ?? "" : context.state.detail }
-    private var structuredAnswer: Bool { phase == "answer" && !promoted && context.state.answerRows != nil }
+    private var answering: Bool { phase == "answer" && !promoted }
+    private var calendarAnswer: Bool { answering && context.state.answerDate != nil }
 
     var body: some View {
         Group {
-            if structuredAnswer {
-                CueCalendarAnswerView(title: title, date: context.state.answerDate ?? "",
-                    rows: context.state.answerRows ?? [], footer: context.state.answerFooter ?? "")
+            if answering {
+                CueAnswerView(text: CueAnswerText.primary(title: title, detail: detail), date: context.state.answerDate ?? "",
+                    detail: title == "Cue" ? "" : detail)
             } else { standardCard }
         }
-        .padding(.horizontal, 20).padding(.vertical, structuredAnswer ? 12 : 16)
+        .padding(.horizontal, 20).padding(.vertical, answering ? 12 : 16)
         .frame(maxWidth: .infinity, minHeight: idle ? 48 : phase == "due" ? 132 : 72, alignment: .leading)
         .activityBackgroundTint(nil)
         .activitySystemActionForegroundColor(.primary)
         .animation(reducedLuminance ? nil : .easeInOut(duration: 0.35), value: phase)
-        .widgetURL(URL(string: structuredAnswer ? "cue://calendar-answer" : "cue://reminders"))
+        .widgetURL(URL(string: calendarAnswer ? "cue://calendar-answer" : "cue://reminders"))
     }
 
     private var standardCard: some View {
@@ -147,7 +148,7 @@ struct CueLiveActivity: Widget {
             } minimal: {
                 CueMark(phase: context.isStale ? "due" : context.state.phase)
             }
-            .widgetURL(URL(string: context.state.phase == "answer" && context.state.answerRows != nil && !context.isStale ? "cue://calendar-answer" : "cue://reminders"))
+            .widgetURL(URL(string: context.state.phase == "answer" && context.state.answerDate != nil && !context.isStale ? "cue://calendar-answer" : "cue://reminders"))
         }
     }
 }

@@ -18,9 +18,13 @@ struct AnswerPreview {
         let now = start.addingTimeInterval(-12 * 3600)
         let agenda = CueCalendarAnswers.make(entries: entries, window: .init(start: start, end: start.addingTimeInterval(86400)), availability: false, now: now, calendar: calendar, locale: .init(identifier: "en_US"))
         let free = CueCalendarAnswers.make(entries: entries, window: .init(start: start.addingTimeInterval(9 * 3600), end: start.addingTimeInterval(18 * 3600)), availability: true, now: now, calendar: calendar, locale: .init(identifier: "en_US"))
-        for (name, answer) in [("agenda", agenda), ("free", free)] {
+        let samples = [("agenda", agenda.headline, agenda.dateLabel, agenda.conciseDetail),
+            ("free", free.headline, free.dateLabel, free.conciseDetail),
+            ("general", "The capital of India is New Delhi.", "", ""),
+            ("long", String(repeating: "A longer answer should remain readable. ", count: 8), "Mon, Oct 12", "Checked 9 AM–6 PM")]
+        for (name, text, date, detail) in samples {
             for width in [320.0, 350.0, 390.0] {
-                let content = CueCalendarAnswerView(title: answer.title, date: answer.dateLabel, rows: answer.previewRows, footer: answer.previewFooter)
+                let content = CueAnswerView(text: text, date: date, detail: detail)
                     .padding(.horizontal, 20).padding(.vertical, 12).frame(width: width)
                     .background(Color(red: 0.10, green: 0.12, blue: 0.16)).environment(\.colorScheme, .dark)
                 let renderer = ImageRenderer(content: content)

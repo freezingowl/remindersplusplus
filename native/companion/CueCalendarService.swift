@@ -106,10 +106,10 @@ final class CueCalendarService {
         let matches = try events(start: start, end: end).map(entry)
         let answer = CueCalendarAnswers.make(entries: matches, window: .init(start: start, end: end),
             availability: plan.queryKind == "availability", searchTitle: plan.searchTitle)
-        // Full results stay local; only three short rows enter ActivityKit's
-        // size-limited snapshot. Tapping the card opens this saved answer.
+        // Full results stay local; only a short answer enters ActivityKit's
+        // snapshot. Tapping the card can still open this saved answer.
         UserDefaults.standard.set(try JSONEncoder().encode(answer), forKey: answerKey)
-        return .init(title: answer.title, detail: "", answer: answer)
+        return .init(title: answer.headline, detail: answer.conciseDetail, answer: answer)
     }
 
     func save(_ plan: CueAssistantPlan) throws -> CueAssistantReply {

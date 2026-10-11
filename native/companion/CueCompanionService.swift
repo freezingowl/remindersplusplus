@@ -308,8 +308,10 @@ actor CueCompanionService {
         state.title = title
         state.detail = detail
         state.answerDate = answer?.dateLabel
-        state.answerRows = answer?.previewRows
-        state.answerFooter = answer?.previewFooter
+        // The main title carries the answer; complete rows remain device-local
+        // behind a tap, not on the compact Live Activity or in its payload.
+        state.answerRows = nil
+        state.answerFooter = nil
         try? await publish(state, startIfNeeded: startIfNeeded)
     }
 
@@ -350,8 +352,9 @@ actor CueCompanionService {
             case "create_event", "update_event": reply = try calendar.save(parsed)
             case "query_calendar": reply = try calendar.query(parsed)
             case "answer":
-                guard !parsed.reply.isEmpty, parsed.reply.count <= 320 else { throw CueCompanionError.message("AI returned an empty answer.") }
-                reply = .init(title: "Cue", detail: parsed.reply)
+                let text = CueAnswerText.primary(title: parsed.reply, detail: "")
+                guard !text.isEmpty, parsed.reply.count <= 320 else { throw CueCompanionError.message("AI returned an empty answer.") }
+                reply = .init(title: text, detail: "")
             default: throw CueCompanionError.message("AI returned an unsupported action. Try a simpler request.")
             }
             revision += 1

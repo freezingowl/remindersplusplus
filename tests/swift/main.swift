@@ -104,17 +104,35 @@ expect(answer([]).title == "You're free tomorrow", "An empty Calendar answers th
 let agenda = answer([holiday, secondHoliday, hackathon], availability: false, window: .init(start: date(0), end: date(0).addingTimeInterval(86400)))
 expect(agenda.rows.map(\.title).first == "Hackathon" && agenda.rows.count == 3 && agenda.rows[1].time == "All day", "Agenda prioritizes timed appointments while retaining holiday rows")
 let crowded = answer((0..<8).map { entry("Event \($0)", start: 9 + $0, end: 10 + $0) }, availability: false)
-expect(crowded.previewRows.count == 3 && crowded.rows.count == 8 && crowded.previewFooter.contains("+5 more"), "Bound the preview without dropping the full agenda")
+expect(crowded.rows.count == 8 && crowded.headline.contains("+7 more events"), "Keep every event locally and summarize the rest without a table")
 expect((try! JSONDecoder().decode(CueCalendarAnswer.self, from: JSONEncoder().encode(crowded))) == crowded, "The full local answer round-trips for a card tap")
 expect(answer([hackathon, entry("Meeting", start: 14, end: 15)]).rows.filter { $0.kind == "free" }.count == 2, "Multiple free intervals remain separate rows")
 expect(answer([], window: .init(start: date(0), end: date(0).addingTimeInterval(86400))).rows[0].time == "All day", "A full-day window does not display a misleading midnight-to-midnight time")
 let multiDay = answer([], window: .init(start: date(9), end: date(18).addingTimeInterval(86400)))
 expect(multiDay.rows[0].time.contains("Oct") && multiDay.dateLabel.contains("13"), "A multi-day answer labels dates as well as times")
 let manyGaps = answer([hackathon, entry("Meeting", start: 12, end: 13), entry("Call", start: 15, end: 16)])
-expect(manyGaps.previewFooter.contains("Checked") && manyGaps.previewFooter.contains("more"), "An overflow preview still discloses the availability window")
+expect(manyGaps.conciseDetail.contains("Checked") && manyGaps.headline.contains("more slots"), "A brief answer still discloses the availability window and additional gaps")
 let longAgenda = answer((0..<5).map { entry(String(repeating: "😀", count: 120), start: 9 + $0, end: 10 + $0) }, availability: false)
-let snapshot: [String: Any] = ["phase": "answer", "title": longAgenda.title, "detail": "", "answerDate": longAgenda.dateLabel,
-    "answerRows": longAgenda.previewRows.map { ["time": $0.time, "title": $0.title, "kind": $0.kind] },
-    "answerFooter": longAgenda.previewFooter, "nextTitle": String(repeating: "😀", count: 120), "nextDetail": "12 Oct 2026 at 9 AM", "nextID": String(repeating: "a", count: 68), "nextPhase": "event", "nextTransitionAt": 813133800]
-expect((try! JSONSerialization.data(withJSONObject: snapshot)).count < 4096, "Worst-case Unicode titles fit the bounded ActivityKit preview payload")
+let snapshot: [String: Any] = ["phase": "answer", "title": longAgenda.headline, "detail": longAgenda.conciseDetail, "answerDate": longAgenda.dateLabel,
+    "nextTitle": String(repeating: "😀", count: 120), "nextDetail": "12 Oct 2026 at 9 AM", "nextID": String(repeating: "a", count: 68), "nextPhase": "event", "nextTransitionAt": 813133800]
+expect((try! JSONSerialization.data(withJSONObject: snapshot)).count < 4096, "Worst-case Unicode titles fit the brief ActivityKit answer payload")
 print("20 Calendar answer scenarios passed")
+
+func plain(_ text: String) -> String {
+    text.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{2009}", with: "")
+}
+expect(plain(fixed.headline) == "Free after 10 AM tomorrow.", "The main text answers the reported availability question directly: \(fixed.headline)")
+expect(plain(fixed.conciseDetail).contains("9") && fixed.conciseDetail.contains("6"), "The small scope note only identifies the checked hours")
+expect(plain(agenda.headline) == "Hackathon, 9–10 AM tomorrow.", "The main agenda is one short appointment answer, not holiday clutter: \(agenda.headline)")
+expect(crowded.headline.contains("Event 0") && crowded.headline.contains("+7 more events"), "Multiple appointments get a simple remaining count")
+expect(answer([], availability: false).headline == "Nothing scheduled tomorrow.", "Empty agendas have a useful main answer")
+expect(answer([holiday, secondHoliday], availability: false).headline.contains("Columbus Day") && answer([holiday, secondHoliday], availability: false).headline.contains("+1 more date"), "Informational-only agendas remain visible in the short answer")
+expect(answer([entry("Away", start: 0, end: 24, allDay: true)]).headline == "No free time tomorrow.", "A genuinely blocked day still gives the correct short answer")
+expect(answer([], window: .init(start: date(0), end: date(0).addingTimeInterval(86400))).headline == "You're free all day tomorrow.", "Full-day freedom is stated simply")
+let middleGap = answer([entry("Morning", start: 9, end: 11), entry("Afternoon", start: 13, end: 18)])
+expect(plain(middleGap.headline) == "Free 11 AM–1 PM tomorrow.", "A single middle gap names its actual hours: \(middleGap.headline)")
+let oldAnswer = try! JSONDecoder().decode(CueCalendarAnswer.self, from: Data("{\"title\":\"Tomorrow\",\"dateLabel\":\"Mon, Oct 12\",\"rows\":[],\"footer\":\"\"}".utf8))
+expect(oldAnswer.headline == "Tomorrow" && oldAnswer.conciseDetail.isEmpty, "Previously saved full answers decode without summary fields")
+expect(CueAnswerText.primary(title: "Cue", detail: "The capital of India is New Delhi.") == "The capital of India is New Delhi.", "Promote the actual answer in old generic snapshots too")
+expect(CueAnswerText.primary(title: "  A short\nanswer.  ", detail: "unused") == "A short answer.", "New replies use their main text with normalized whitespace")
+print("12 simple answer scenarios passed")

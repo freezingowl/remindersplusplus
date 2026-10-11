@@ -214,8 +214,7 @@ export default function App() {
         setReminders(saved.reminders);
         setInput("");
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        if (saved.answer) setCalendarAnswer(saved.answer);
-        else showToast(saved.reply);
+        showToast(saved.answer ? saved.answer.summary ?? saved.answer.title : saved.reply);
       } catch (error) {
         Alert.alert("Couldn’t complete request", error instanceof Error ? error.message : "Please try again.");
       } finally {

@@ -9,6 +9,8 @@ export type CalendarAnswer = {
   dateLabel: string;
   rows: { time: string; title: string; kind: "event" | "info" | "free" | "busy" }[];
   footer: string;
+  summary?: string;
+  summaryDetail?: string;
 };
 
 type CompanionModule = {
@@ -75,6 +77,7 @@ function answerFromJSON(json: string | null | undefined): CalendarAnswer | null 
   if (!json) return null;
   const value = JSON.parse(json) as CalendarAnswer;
   if (!value || typeof value.title !== "string" || typeof value.dateLabel !== "string" || typeof value.footer !== "string"
+    || (value.summary != null && typeof value.summary !== "string") || (value.summaryDetail != null && typeof value.summaryDetail !== "string")
     || !Array.isArray(value.rows) || value.rows.length > 1001
     || value.rows.some((row) => !row || typeof row.time !== "string" || typeof row.title !== "string" || !["event", "info", "free", "busy"].includes(row.kind))) {
     throw new Error("Cue’s Calendar answer could not be read. Ask your question again.");
